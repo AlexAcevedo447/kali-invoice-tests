@@ -8,10 +8,14 @@
     "test": "cypress run",
     "test:api:auth": "cypress run --spec 'cypress/e2e/api/auth/**/*.cy.ts'",
     "test:api:invoice": "cypress run --spec 'cypress/e2e/api/invoice/**/*.cy.ts'",
-    "test:ui": "cypress run --spec 'cypress/e2e/ui/**/*.cy.ts'",
     "test:flows": "cypress run --spec 'cypress/e2e/flows/**/*.cy.ts'",
     "invoice:test-db:up": "./scripts/invoice-test-db.sh up",
-    "invoice:test-db:down": "./scripts/invoice-test-db.sh down"
+    "invoice:test-db:down": "./scripts/invoice-test-db.sh down",
+    "test:auth": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"cypress/e2e/api/auth/**/*.cy.ts\" --browser electron",
+    "test:invoice": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"cypress/e2e/api/invoice/**/*.cy.ts\" --browser electron",
+    "test:ui": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"cypress/e2e/ui/**/*.cy.ts\" --browser electron",
+    "test:invoice:fresh": "./scripts/invoice-test-fresh.sh",
+    "test:all": "npm run test:auth && npm run test:invoice:fresh && npm run test:ui"
   },
   "repository": {
     "type": "git",
