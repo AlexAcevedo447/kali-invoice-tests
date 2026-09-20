@@ -1,6 +1,7 @@
 import { defineConfig } from "cypress";
 
 export default defineConfig({
+  projectId: 'agqpnh',
   e2e: {
     setupNodeEvents(_on, config) {
       config.baseUrl = config.env.FRONT_URL || null;
