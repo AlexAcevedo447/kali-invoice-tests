@@ -1,0 +1,35 @@
+{
+  "name": "kali-invoice-tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "cy:open": "cypress open",
+    "test": "cypress run",
+    "test:api:auth": "cypress run --spec 'cypress/e2e/api/auth/**/*.cy.ts'",
+    "test:api:invoice": "cypress run --spec 'cypress/e2e/api/invoice/**/*.cy.ts'",
+    "test:ui": "cypress run --spec 'cypress/e2e/ui/**/*.cy.ts'",
+    "test:flows": "cypress run --spec 'cypress/e2e/flows/**/*.cy.ts'",
+    "invoice:test-db:up": "./scripts/invoice-test-db.sh up",
+    "invoice:test-db:down": "./scripts/invoice-test-db.sh down"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexAcevedo447/kali-invoice-tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AlexAcevedo447/kali-invoice-tests/issues"
+  },
+  "homepage": "https://github.com/AlexAcevedo447/kali-invoice-tests#readme",
+  "devDependencies": {
+    "cypress": "^15.21.0",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "cypress@15.21.0": true
+  }
+}
