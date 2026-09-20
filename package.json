@@ -20,7 +20,9 @@
     "test:invoice:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"cypress/e2e/api/invoice/**/*.cy.ts\" --browser electron",
     "test:ui:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"cypress/e2e/ui/**/*.cy.ts\" --browser electron",
     "test:invoice:fresh:headed": "./scripts/invoice-test-fresh.sh headed",
-    "test:all:headed": "npm run test:auth:headed && npm run test:invoice:fresh:headed && npm run test:ui:headed"
+    "test:all:headed": "npm run test:auth:headed && npm run test:invoice:fresh:headed && npm run test:ui:headed",
+    "test:invoice:prepare": "./scripts/invoice-test-fresh.sh prepare",
+    "test:ga9:open": "npm run test:invoice:prepare && env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --no-exit --config \"watchForFileChanges=false,numTestsKeptInMemory=50\" --browser electron --spec \"cypress/e2e/evidence/GA9-all-tests.cy.ts\""
   },
   "repository": {
     "type": "git",

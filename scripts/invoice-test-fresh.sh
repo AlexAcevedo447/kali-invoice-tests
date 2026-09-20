@@ -8,7 +8,8 @@
 #   3) levanta un kali-invoice-service nuevo apuntando explícitamente a esa
 #      base exclusiva;
 #   4) espera hasta que responda, confirma que la lista de facturas es [];
-#   5) ejecuta `npm run test:invoice` (o `test:invoice:headed` con `headed`).
+#   5) ejecuta `npm run test:invoice` (o `test:invoice:headed` con `headed`),
+#      salvo en modo `prepare`, que se detiene justo antes de este paso.
 #
 # No toca bases de desarrollo, otros Postgres, otros procesos Go, ni el código
 # de kali-invoice-service. Si no puede identificar con certeza el proceso en
@@ -16,8 +17,11 @@
 # nada (no usa killall/pkill ni mecanismos globales).
 #
 # Uso:
-#   ./scripts/invoice-test-fresh.sh          # ejecuta npm run test:invoice
-#   ./scripts/invoice-test-fresh.sh headed   # ejecuta npm run test:invoice:headed
+#   ./scripts/invoice-test-fresh.sh           # prepara y ejecuta npm run test:invoice
+#   ./scripts/invoice-test-fresh.sh headed    # prepara y ejecuta npm run test:invoice:headed
+#   ./scripts/invoice-test-fresh.sh prepare   # solo prepara (BD + servicio + [] confirmado),
+#                                              # no ejecuta ningún test; para flujos que abren
+#                                              # Cypress ellos mismos después (ver test:ga9:open)
 #
 # Variable opcional:
 #   INVOICE_SERVICE_DIR  ruta al repo de kali-invoice-service
@@ -25,13 +29,17 @@
 
 set -eu
 
+MODE="run"
 NPM_SCRIPT="test:invoice"
-if [ "${1:-}" = "headed" ]; then
-  NPM_SCRIPT="test:invoice:headed"
-elif [ -n "${1:-}" ]; then
-  echo "Argumento desconocido: '$1' (uso: $0 [headed])" >&2
-  exit 1
-fi
+case "${1:-}" in
+  "") ;;
+  headed) NPM_SCRIPT="test:invoice:headed" ;;
+  prepare) MODE="prepare" ;;
+  *)
+    echo "Argumento desconocido: '$1' (uso: $0 [headed|prepare])" >&2
+    exit 1
+    ;;
+esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -120,6 +128,11 @@ if [ "$BODY" != "[]" ]; then
   exit 1
 fi
 echo "OK: GET /api/v1/invoices -> []"
+
+if [ "$MODE" = "prepare" ]; then
+  echo "== 6) Modo 'prepare': preparación lista, no se ejecuta Cypress aquí =="
+  exit 0
+fi
 
 echo "== 6) Ejecutando npm run $NPM_SCRIPT =="
 cd "$REPO_ROOT"
