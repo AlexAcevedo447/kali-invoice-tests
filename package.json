@@ -15,7 +15,12 @@
     "test:invoice": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"cypress/e2e/api/invoice/**/*.cy.ts\" --browser electron",
     "test:ui": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"cypress/e2e/ui/**/*.cy.ts\" --browser electron",
     "test:invoice:fresh": "./scripts/invoice-test-fresh.sh",
-    "test:all": "npm run test:auth && npm run test:invoice:fresh && npm run test:ui"
+    "test:all": "npm run test:auth && npm run test:invoice:fresh && npm run test:ui",
+    "test:auth:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"cypress/e2e/api/auth/**/*.cy.ts\" --browser electron",
+    "test:invoice:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"cypress/e2e/api/invoice/**/*.cy.ts\" --browser electron",
+    "test:ui:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"cypress/e2e/ui/**/*.cy.ts\" --browser electron",
+    "test:invoice:fresh:headed": "./scripts/invoice-test-fresh.sh headed",
+    "test:all:headed": "npm run test:auth:headed && npm run test:invoice:fresh:headed && npm run test:ui:headed"
   },
   "repository": {
     "type": "git",
