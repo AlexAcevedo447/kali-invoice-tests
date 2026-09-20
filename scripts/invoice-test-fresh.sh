@@ -8,18 +8,30 @@
 #   3) levanta un kali-invoice-service nuevo apuntando explícitamente a esa
 #      base exclusiva;
 #   4) espera hasta que responda, confirma que la lista de facturas es [];
-#   5) ejecuta `npm run test:invoice`.
+#   5) ejecuta `npm run test:invoice` (o `test:invoice:headed` con `headed`).
 #
 # No toca bases de desarrollo, otros Postgres, otros procesos Go, ni el código
 # de kali-invoice-service. Si no puede identificar con certeza el proceso en
 # el puerto 8080 como perteneciente a kali-invoice-service, aborta sin matar
 # nada (no usa killall/pkill ni mecanismos globales).
 #
+# Uso:
+#   ./scripts/invoice-test-fresh.sh          # ejecuta npm run test:invoice
+#   ./scripts/invoice-test-fresh.sh headed   # ejecuta npm run test:invoice:headed
+#
 # Variable opcional:
 #   INVOICE_SERVICE_DIR  ruta al repo de kali-invoice-service
 #                        (default: /Users/jhon/Documents/Personal/KALI/kali-invoice-service)
 
 set -eu
+
+NPM_SCRIPT="test:invoice"
+if [ "${1:-}" = "headed" ]; then
+  NPM_SCRIPT="test:invoice:headed"
+elif [ -n "${1:-}" ]; then
+  echo "Argumento desconocido: '$1' (uso: $0 [headed])" >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -109,6 +121,6 @@ if [ "$BODY" != "[]" ]; then
 fi
 echo "OK: GET /api/v1/invoices -> []"
 
-echo "== 6) Ejecutando npm run test:invoice =="
+echo "== 6) Ejecutando npm run $NPM_SCRIPT =="
 cd "$REPO_ROOT"
-npm run test:invoice
+npm run "$NPM_SCRIPT"
