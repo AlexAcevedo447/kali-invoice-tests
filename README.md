@@ -63,6 +63,43 @@ npm run test:ui            # pruebas de UI (React) mediante navegador
 npm run test:flows         # flujos E2E que involucran varios componentes
 ```
 
+Atajos equivalentes, pensados para entornos donde `ELECTRON_RUN_AS_NODE` queda
+seteado en el shell (rompe el binario de Cypress) y conviene forzar
+`--browser electron` explícitamente:
+
+```bash
+npm run test:auth      # = test:api:auth, con la variable de entorno corregida
+npm run test:invoice   # = test:api:invoice, ídem (NO resetea la BD de Invoice)
+npm run test:ui        # sin cambios
+```
+
+`npm run test:invoice` por sí solo **no** garantiza una base vacía para
+CP-INT-005. Para eso usa:
+
+```bash
+npm run test:invoice:fresh   # invoice:test-db:down -> invoice:test-db:up -> test:invoice
+```
+
+**Precondición manual, no automatizada a propósito**: `test:invoice:fresh`
+destruye y recrea el contenedor Postgres exclusivo de Cypress
+(`kali-invoice-cypress-db`). Si `kali-invoice-service` no reabre sola su
+conexión contra el contenedor nuevo (mismo host/puerto, pero es un contenedor
+distinto), `CP-INT-005` u otras pruebas de Invoice fallarán con errores de
+conexión. Este repo no reinicia `kali-invoice-service` por ti —no le
+corresponde gestionar el ciclo de vida de otro servicio—, así que si eso pasa,
+reinicia manualmente el proceso/contenedor de `kali-invoice-service`
+apuntando a `kali_invoices_cypress` (ver "Aislamiento de datos para
+CP-INT-005" más abajo) y vuelve a correr el script.
+
+```bash
+npm run test:all   # test:auth -> test:invoice:fresh -> test:ui, en ese orden
+```
+
+`test:all` asume que Auth, Invoice (ya reconectado a la BD fresca si hizo
+falta) y el frontend están arriba antes de invocarlo. No incluye
+`test:flows`: hoy esa carpeta no tiene specs y `cypress run` falla si el
+patrón no matchea ningún archivo.
+
 ## Estructura de carpetas
 
 ```
