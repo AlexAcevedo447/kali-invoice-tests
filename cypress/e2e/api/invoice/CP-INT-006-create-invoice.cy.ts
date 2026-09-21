@@ -1,5 +1,6 @@
 import { createInvoice } from "../../../support/api/invoice/invoice-client";
 import { idempotencyKey, uuid } from "../../../support/data/unique";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-INT-006 - Crear factura", () => {
   it("crea una factura con un payload mínimo válido", () => {
@@ -33,6 +34,7 @@ describe("CP-INT-006 - Crear factura", () => {
       expect(new Date(response.body.DueDate).getTime()).to.be.at.least(
         new Date(response.body.IssueDate).getTime()
       );
+      captureEvidence("06-CP-INT-006-crear-factura");
     });
   });
 });

@@ -6,6 +6,7 @@ import {
   uniqueIdentificationNumber,
   uniqueName,
 } from "../../../support/data/unique";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-INT-004 - Consultar usuario por email", () => {
   it("prepara su propio usuario y luego lo consulta por email", () => {
@@ -40,6 +41,7 @@ describe("CP-INT-004 - Consultar usuario por email", () => {
           // original nunca viaja en texto plano en la respuesta (sin asumir que
           // el campo Password deba existir ni validar su formato de hash).
           expect(response.body.Password).to.not.eq(plainPassword);
+          captureEvidence("04-CP-INT-004-consultar-usuario");
         });
       });
     });
