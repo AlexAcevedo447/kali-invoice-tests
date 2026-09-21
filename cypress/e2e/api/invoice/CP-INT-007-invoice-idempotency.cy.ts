@@ -1,5 +1,6 @@
 import { createInvoice } from "../../../support/api/invoice/invoice-client";
 import { idempotencyKey, uuid } from "../../../support/data/unique";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-INT-007 - Idempotencia al crear facturas", () => {
   it("repite la misma respuesta ante la misma key y rechaza un payload distinto con 422", () => {
@@ -29,6 +30,7 @@ describe("CP-INT-007 - Idempotencia al crear facturas", () => {
           customer_id: uuid(),
         }).then((conflictResponse) => {
           expect(conflictResponse.status).to.eq(422);
+          captureEvidence("07-CP-INT-007-idempotencia-factura");
         });
       });
     });

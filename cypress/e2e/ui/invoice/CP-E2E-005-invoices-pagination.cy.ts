@@ -1,6 +1,7 @@
 import { createInvoice } from "../../../support/api/invoice/invoice-client";
 import { idempotencyKey, uuid } from "../../../support/data/unique";
 import { loginToUI } from "../../../support/ui/session";
+import { captureEvidence } from "../../../support/evidence";
 
 /**
  * invoice-kali-front pagina la tabla de facturas en el cliente (rows=10,
@@ -38,6 +39,7 @@ describe("CP-E2E-005 - Listado y paginación de facturas", () => {
       .then(($cells) => [...$cells].map((el) => el.textContent?.trim()))
       .then((page1) => {
         expect(page1).to.have.length(10);
+        captureEvidence("10-CP-E2E-005-facturas-pagina-1");
 
         cy.get('button[aria-label="Next Page"]').click();
 
@@ -52,6 +54,7 @@ describe("CP-E2E-005 - Listado y paginación de facturas", () => {
             expect(page2.length).to.be.greaterThan(0);
             const overlap = page2.filter((customer) => page1.includes(customer));
             expect(overlap, "la página 2 no debe repetir clientes de la página 1").to.have.length(0);
+            captureEvidence("11-CP-E2E-005-facturas-pagina-2");
           });
       });
   });

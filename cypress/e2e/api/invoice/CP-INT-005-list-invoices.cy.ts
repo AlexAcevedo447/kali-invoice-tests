@@ -1,4 +1,5 @@
 import { listInvoices } from "../../../support/api/invoice/invoice-client";
+import { captureEvidence } from "../../../support/evidence";
 
 /**
  * Precondición real de este caso: kali-invoice-service debe apuntar a una base
@@ -15,6 +16,7 @@ describe("CP-INT-005 - Listar facturas", () => {
     listInvoices(Cypress.env("INVOICE_API_URL")).then((response) => {
       expect(response.status).to.eq(200);
       expect(response.body).to.deep.equal([]);
+      captureEvidence("05-CP-INT-005-listar-facturas-vacio");
     });
   });
 });

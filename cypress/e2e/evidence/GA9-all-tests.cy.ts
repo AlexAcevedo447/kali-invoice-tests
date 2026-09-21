@@ -17,3 +17,13 @@ import "../api/invoice/CP-INT-007-invoice-idempotency.cy";
 
 import "../ui/auth/CP-E2E-007-duplicate-email.cy";
 import "../ui/invoice/CP-E2E-005-invoices-pagination.cy";
+
+// Reorganiza las capturas de cypress/screenshots/GA9-all-tests.cy.ts/GA9/
+// (anidado automático de cy.screenshot()) a cypress/screenshots/GA9/ plano.
+// Solo corre cuando esta corrida es la de evidencia GA9 (test:ga9:open);
+// no afecta ninguna otra ejecución.
+after(function () {
+  if (Cypress.env("GA9_EVIDENCE")) {
+    cy.task("flattenGA9Screenshots");
+  }
+});

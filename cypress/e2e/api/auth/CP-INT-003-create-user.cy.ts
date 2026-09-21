@@ -7,6 +7,7 @@ import {
   uniqueIdentificationNumber,
   uniqueName,
 } from "../../../support/data/unique";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-INT-003 - Crear usuario", () => {
   it("crea un usuario nuevo con payload válido y sin exponer la contraseña", () => {
@@ -23,6 +24,7 @@ describe("CP-INT-003 - Crear usuario", () => {
         // por lo que no hay ningún dato (ni contraseña) que pueda quedar
         // expuesto en esta respuesta.
         expectCreatedTextBody(response.body);
+        captureEvidence("03-CP-INT-003-crear-usuario");
       });
     });
   });

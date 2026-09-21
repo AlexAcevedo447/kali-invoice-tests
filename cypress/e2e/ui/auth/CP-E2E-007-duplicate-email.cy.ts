@@ -7,6 +7,7 @@ import {
   uniqueIdentificationNumber,
   uniqueName,
 } from "../../../support/data/unique";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-E2E-007 - Registro con email duplicado", () => {
   const duplicateEmail = uniqueEmail("cp-e2e-007");
@@ -37,6 +38,7 @@ describe("CP-E2E-007 - Registro con email duplicado", () => {
     cy.get('[data-cy="user-username"]').type(uniqueName("cp-e2e-007-user-b"));
     cy.get('[data-cy="user-email"]').type(duplicateEmail);
     cy.get('[data-cy="user-password"]').type("Str0ng!Passw0rd");
+    captureEvidence("08-CP-E2E-007-formulario-usuario");
     cy.get('[data-cy="user-submit"]').click();
 
     cy.wait("@createUser").its("response.statusCode").should("eq", 409);
@@ -45,5 +47,6 @@ describe("CP-E2E-007 - Registro con email duplicado", () => {
       "contain.text",
       "Ya existe un usuario registrado con este correo electrónico."
     );
+    captureEvidence("09-CP-E2E-007-email-duplicado");
   });
 });

@@ -1,4 +1,5 @@
 import { login } from "../../../support/api/auth/auth-client";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-INT-001 - Login", () => {
   it("autentica con credenciales válidas y retorna un access token", () => {
@@ -14,6 +15,7 @@ describe("CP-INT-001 - Login", () => {
       expect(response.body.email).to.eq(Cypress.env("AUTH_ADMIN_EMAIL"));
       expect(response.body.user_id).to.be.a("string").and.not.empty;
       expect(response.body.roles).to.be.an("array");
+      captureEvidence("01-CP-INT-001-login");
     });
   });
 });

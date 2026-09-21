@@ -2,6 +2,7 @@ import { createRole } from "../../../support/api/auth/auth-client";
 import { loginAsAdmin } from "../../../support/api/auth/session";
 import { expectCreatedTextBody } from "../../../support/assertions/auth-responses";
 import { idempotencyKey, uniqueName } from "../../../support/data/unique";
+import { captureEvidence } from "../../../support/evidence";
 
 describe("CP-INT-002 - Crear rol", () => {
   it("crea un rol nuevo autenticado con JWT y valida idempotencia real (replay y conflicto)", () => {
@@ -36,6 +37,7 @@ describe("CP-INT-002 - Crear rol", () => {
                 expect(conflictResponse.status).to.eq(422);
                 const conflictBody = conflictResponse.body as { error: string };
                 expect(conflictBody.error).to.be.a("string").and.not.empty;
+                captureEvidence("02-CP-INT-002-crear-rol");
               });
             }
           );
