@@ -6,3 +6,6 @@ cypress.env.json
 .env
 .env.*
 !.env.example
+
+.DS_Store
+cypress/results/
