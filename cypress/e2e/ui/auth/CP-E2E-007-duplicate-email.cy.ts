@@ -38,6 +38,8 @@ describe("CP-E2E-007 - Registro con email duplicado", () => {
     cy.get('[data-cy="user-username"]').type(uniqueName("cp-e2e-007-user-b"));
     cy.get('[data-cy="user-email"]').type(duplicateEmail);
     cy.get('[data-cy="user-password"]').type("Str0ng!Passw0rd");
+    // El formulario exige elegir un rol existente del tenant (GET /api/v1/roles).
+    cy.get('[data-cy="user-role"]').should("not.be.disabled").select("admin");
     captureEvidence("08-CP-E2E-007-formulario-usuario");
     cy.get('[data-cy="user-submit"]').click();
 
