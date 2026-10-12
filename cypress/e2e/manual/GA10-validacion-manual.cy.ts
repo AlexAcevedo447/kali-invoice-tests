@@ -82,6 +82,19 @@ const patchInvoice = (id: string, action: "pay" | "cancel") =>
     failOnStatusCode: false,
   });
 
+/** En facturas Pagadas/Canceladas las tres acciones quedan deshabilitadas con motivo. */
+const expectActionsClosed = (number: string, label: "Pagada" | "Cancelada") => {
+  const reason =
+    label === "Pagada"
+      ? "La factura pagada no admite modificaciones."
+      : "La factura cancelada no admite modificaciones.";
+  cy.contains(ROWS, number).within(() => {
+    ["action-edit", "action-change-status", "action-cancel"].forEach((cyId) =>
+      cy.get(`[data-cy="${cyId}"]`).should("be.disabled").and("have.attr", "title", reason)
+    );
+  });
+};
+
 const authed = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 /** Login real por formulario. */
@@ -470,7 +483,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       });
     });
 
-    it("2.5 editar factura: los cambios persisten y se ven tras recargar", () => {
+    it("2.5 editar factura Pendiente: cabecera e ítems (modificar y añadir) persisten tras recargar", () => {
       const customer = uuid();
       createInvoice(INVOICE(), idempotencyKey(), {
         customer_id: customer,
@@ -478,34 +491,133 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       }).then((r) => {
         const id = r.body.ID;
         const newCustomer = uuid();
+        const newItem = uuid();
         cy.intercept("PUT", "**/api/v1/invoices/*").as("update");
+        cy.intercept("PUT", "**/api/v1/invoice-items/*").as("itemUpdate");
+        cy.intercept("POST", "**/api/v1/invoice-items").as("itemCreate");
         cy.visit("/invoicing/invoices");
-        cy.contains(ROWS, invoiceNumber(id)).within(() => cy.get('button[title="Editar"]').click());
+        cy.contains(ROWS, invoiceNumber(id)).within(() => {
+          cy.get('button[title="Editar"]').should("not.be.disabled").click();
+        });
         cy.get(".p-dialog").should("be.visible").and("contain.text", "Editar Factura");
+
+        // Campos como los ve el usuario: cabecera e ítems editables; Issue Date e
+        // Item ID de líneas ya guardadas bloqueados (el backend no los modifica).
+        cy.get("#customerId").should("not.be.disabled");
+        cy.get("#dueDate").should("not.be.disabled");
+        cy.get("#issueDate").should("be.disabled");
+        cy.get('[id="items.0.itemId"]').should("be.disabled");
+        ["quantity", "unitPrice", "taxes.0.code", "taxes.0.kind", "taxes.0.rate"].forEach((f) =>
+          cy.get(`[id="items.0.${f}"]`).should("not.be.disabled")
+        );
+        cy.contains(".p-dialog button", "Add Item").should("not.be.disabled");
+
+        // Modificar como un usuario.
         cy.get("#customerId").should("have.value", customer).clear().type(newCustomer);
         cy.get("#dueDate").clear().type("2027-01-15T10:00");
+        cy.get('[id="items.0.quantity"]').clear().type("3");
+        cy.contains(".p-dialog button", "Add Item").click();
+        cy.get('[id="items.1.itemId"]').should("not.be.disabled").type(newItem);
+        cy.get('[id="items.1.quantity"]').clear().type("2");
+        cy.get('[id="items.1.unitPrice"]').clear().type("50");
         shot("C20-editar-factura-formulario");
         cy.contains(".p-dialog button", "Update Invoice").click();
 
         cy.wait("@update").then((i) => {
-          rec("editar.http", { request: i.request.body, status: i.response?.statusCode, response_customer: (i.response?.body as InvoiceResponse).CustomerID, response_due: (i.response?.body as InvoiceResponse).DueDate });
+          rec("editar.http_cabecera", { request: i.request.body, status: i.response?.statusCode });
           expect(i.response?.statusCode).to.eq(200);
           expect(i.request.body).to.deep.equal({ customer_id: newCustomer, due_date: new Date("2027-01-15T10:00").toISOString() });
+        });
+        cy.wait("@itemUpdate").then((i) => {
+          rec("editar.http_item_actualizado", { request: i.request.body, status: i.response?.statusCode });
+          expect(i.response?.statusCode).to.eq(200);
+          expect(i.request.body).to.deep.include({ quantity: 3, unit_price: 999 });
+        });
+        cy.wait("@itemCreate").then((i) => {
+          rec("editar.http_item_nuevo", { request: i.request.body, status: i.response?.statusCode });
+          expect(i.response?.statusCode).to.eq(201);
+          expect(i.request.body).to.deep.include({ invoice_id: id, item_id: newItem, quantity: 2, unit_price: 50 });
         });
         toasts().then((t) => {
           rec("editar.toasts", t);
           expect(t.join(" ")).to.contain("Factura actualizada correctamente");
         });
         cy.get(".p-dialog:visible").should("not.exist");
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer);
+        // 3 × 999 + 19 % = 3566.43; 2 × 50 + 18 % = 118 → 3684.43
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer).and("contain.text", "$3684.43");
         shot("C20b-editar-factura-resultado");
 
         cy.reload();
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer).and("contain.text", "15/1/2027");
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer).and("contain.text", "$3684.43").and("contain.text", "15/1/2027");
         getInvoice(id).then((inv) => {
-          rec("editar.backend_despues", { CustomerID: inv.CustomerID, DueDate: inv.DueDate });
+          rec("editar.backend_despues", { CustomerID: inv.CustomerID, DueDate: inv.DueDate, Total: inv.Total, Items: inv.Items.length });
           expect(inv.CustomerID).to.eq(newCustomer);
           expect(new Date(inv.DueDate).toISOString()).to.eq(new Date("2027-01-15T10:00").toISOString());
+          expect(inv.Items).to.have.length(2);
+          expect(inv.Total).to.be.closeTo(3684.43, 0.001);
+        });
+      });
+    });
+
+    it("2.5b editar factura Pendiente: eliminar una línea", () => {
+      createInvoice(INVOICE(), idempotencyKey(), {
+        customer_id: uuid(),
+        items: [
+          { item_id: uuid(), quantity: 1, unit_price: 100 },
+          { item_id: uuid(), quantity: 1, unit_price: 40 },
+        ],
+      }).then((r) => {
+        const id = r.body.ID;
+        cy.intercept("DELETE", "**/api/v1/invoice-items/*").as("itemDelete");
+        cy.visit("/invoicing/invoices");
+        cy.contains(ROWS, invoiceNumber(id)).within(() => cy.get('button[title="Editar"]').click());
+        cy.contains(".p-dialog section", "Item 2").contains("button", "Remove").should("not.be.disabled").click();
+        cy.contains(".p-dialog button", "Update Invoice").click();
+        cy.wait("@itemDelete").its("response.statusCode").should("eq", 204);
+        toasts().then((t) => expect(t.join(" ")).to.contain("Factura actualizada correctamente"));
+        cy.reload();
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", "$100.00");
+        getInvoice(id).then((inv) => {
+          expect(inv.Items).to.have.length(1);
+          expect(inv.Total).to.eq(100);
+        });
+      });
+    });
+
+    (["pay", "cancel"] as const).forEach((action) => {
+      const label = action === "pay" ? "Pagada" : "Cancelada";
+      const error = action === "pay" ? "invoice is already paid" : "invoice is already canceled";
+      it(`2.5${action === "pay" ? "c" : "d"} factura ${label}: no editable en UI y rechazada en backend`, () => {
+        createInvoice(INVOICE(), idempotencyKey(), {
+          customer_id: uuid(),
+          items: [{ item_id: uuid(), quantity: 1, unit_price: 100 }],
+        }).then((r) => {
+          const id = r.body.ID;
+          const lineId = r.body.Items[0].ID;
+          patchInvoice(id, action).its("status").should("eq", 200);
+          cy.visit("/invoicing/invoices");
+          cy.contains(ROWS, invoiceNumber(id)).should("contain.text", label);
+          expectActionsClosed(invoiceNumber(id), label);
+          shot(`C20e-editar-bloqueado-${label}`);
+
+          // Intentos forzados contra el backend (sin pasar por la UI).
+          const forced = [
+            { method: "PUT", url: `${INVOICE()}/api/v1/invoices/${id}`, body: { customer_id: uuid(), due_date: "2027-12-31T00:00:00Z" } },
+            { method: "POST", url: `${INVOICE()}/api/v1/invoice-items`, body: { invoice_id: id, item_id: uuid(), quantity: 1, unit_price: 5 } },
+            { method: "PUT", url: `${INVOICE()}/api/v1/invoice-items/${lineId}`, body: { quantity: 9, unit_price: 9 } },
+            { method: "DELETE", url: `${INVOICE()}/api/v1/invoice-items/${lineId}` },
+          ];
+          forced.forEach((req) => {
+            cy.request({ ...req, headers: { "Idempotency-Key": idempotencyKey() }, failOnStatusCode: false }).then((res) => {
+              expect(res.status, `${req.method} ${req.url}`).to.eq(422);
+              expect(res.body).to.deep.equal({ error });
+            });
+          });
+          getInvoice(id).then((inv) => {
+            expect(inv.Status).to.eq(action === "pay" ? "PAID" : "CANCELED");
+            expect(inv.Total).to.eq(100);
+            expect(inv.Items).to.have.length(1);
+          });
         });
       });
     });
@@ -536,7 +648,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       shot("C20d-editar-fallo-SIMULADO");
     });
 
-    it("2.7 marcar como pagada (solo opciones reales en el diálogo)", () => {
+    it("2.7 marcar como pagada (solo opciones reales; luego acciones bloqueadas)", () => {
       cy.intercept("PATCH", "**/api/v1/invoices/*/pay").as("pay");
       cy.visit("/invoicing/invoices");
       cy.contains(ROWS, "Pendiente").within(() => {
@@ -562,11 +674,9 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       });
       shot("C10-factura-pagada");
 
-      cy.get<string>("@number").then((n) => {
-        cy.contains(ROWS, n.trim()).within(() => cy.get('button[title="Cambiar estado"]').click());
-      });
-      cy.contains(".p-dialog", 'Esta factura no puede cambiar de estado desde "Pagada"').should("be.visible");
-      shot("C11-cambiar-estado-no-permitido");
+      // Una vez pagada, la fila ya no ofrece Editar, Cambiar estado ni Cancelar.
+      cy.get<string>("@number").then((n) => expectActionsClosed(n.trim(), "Pagada"));
+      shot("C11-acciones-bloqueadas-pagada");
     });
 
     it("2.8 pagar con fallo real del backend: solo mensaje de error", () => {
@@ -597,7 +707,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     it("2.9 cancelar mediante el botón 'Cancelar'", () => {
       cy.intercept("PATCH", "**/api/v1/invoices/**").as("patch");
       cy.visit("/invoicing/invoices");
-      cy.get(`${ROWS}:first button`).then(($btns) => {
+      cy.contains(ROWS, "Pendiente").find("button").then(($btns) => {
         const titles = [...$btns].map((b) => b.getAttribute("title"));
         rec("cancelar.tooltips_acciones", titles);
         expect(titles).to.deep.equal(["Editar", "Cambiar estado", "Cancelar"]);
@@ -646,10 +756,9 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       });
       cy.get<string>("@number").then((n) => {
         cy.contains(ROWS, n.trim()).should("contain.text", "Cancelada");
-        cy.contains(ROWS, n.trim()).within(() => cy.get('button[title="Cambiar estado"]').click());
+        expectActionsClosed(n.trim(), "Cancelada");
       });
-      cy.contains(".p-dialog", 'Esta factura no puede cambiar de estado desde "Cancelada"').should("be.visible");
-      shot("C11b-cambiar-estado-cancelada-no-permitido");
+      shot("C11b-acciones-bloqueadas-cancelada");
     });
 
     it("2.11 cancelar con fallo real del backend: solo mensaje de error", () => {
