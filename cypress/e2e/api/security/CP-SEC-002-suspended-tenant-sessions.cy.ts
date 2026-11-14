@@ -1,5 +1,6 @@
 import { createTenant, createUser, login } from "../../../support/api/auth/auth-client";
 import { loginAsAdmin } from "../../../support/api/auth/session";
+import { ensureRoleWithPermissions, grantRoleToUserByEmail } from "../../../support/api/auth/rbac";
 import { idempotencyKey, uniqueEmail, uniqueIdentificationNumber, uniqueName } from "../../../support/data/unique";
 
 /**
@@ -53,6 +54,10 @@ describe("CP-SEC-002 - Suspender una empresa bloquea sus tokens vigentes", () =>
           email,
           password: PASSWORD,
         }).its("status").should("eq", 201);
+        ensureRoleWithPermissions(AUTH(), ptoken, tenantId, "lector", [
+          ["roles", "read"],
+          ["invoices", "read"],
+        ]).then((role) => grantRoleToUserByEmail(AUTH(), ptoken, tenantId, email, role.Id));
         // Token emitido con la empresa activa.
         login(AUTH(), { email, password: PASSWORD }).then((s) => {
           expect(s.status).to.eq(200);

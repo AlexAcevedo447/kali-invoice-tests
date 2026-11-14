@@ -1,4 +1,5 @@
-import { createRole, createTenant, createUser, login } from "../../../support/api/auth/auth-client";
+import { createTenant, createUser, login } from "../../../support/api/auth/auth-client";
+import { ensureRoleWithPermissions, grantRoleToUserByEmail } from "../../../support/api/auth/rbac";
 import { loginAsAdmin } from "../../../support/api/auth/session";
 import { createInvoice, seedCatalog, type InvoiceResponse } from "../../../support/api/invoice/invoice-client";
 import { idempotencyKey, uniqueEmail, uniqueIdentificationNumber, uniqueName } from "../../../support/data/unique";
@@ -61,11 +62,11 @@ const provisionTenant = (label: "A" | "B") => {
         email,
         password: PASSWORD,
       }).its("status").should("eq", 201);
-      createRole(AUTH(), ptoken, idempotencyKey(), {
-        tenant_id: tenantId,
-        name: uniqueName(`cp-sec-001-rol-${label}`),
-        description: `Rol de la empresa ${label}`,
-      }).its("status").should("eq", 201);
+      // Rol administrador de la empresa (*/*): con autorización por operación, el
+      // aislamiento se prueba con un usuario que SÍ puede operar en su empresa.
+      ensureRoleWithPermissions(AUTH(), ptoken, tenantId, uniqueName(`cp-sec-001-rol-${label}`), [["*", "*"]], `Rol de la empresa ${label}`).then(
+        (role) => grantRoleToUserByEmail(AUTH(), ptoken, tenantId, email, role.Id)
+      );
 
       login(AUTH(), { email, password: PASSWORD }).then((session) => {
         expect(session.status).to.eq(200);

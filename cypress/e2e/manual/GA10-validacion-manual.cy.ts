@@ -5,6 +5,7 @@ import {
   InvoiceResponse,
 } from "../../support/api/invoice/invoice-client";
 import { createRole, createTenant, createUser, getUserByEmail } from "../../support/api/auth/auth-client";
+import { assignPermissionToRole, ensurePermission } from "../../support/api/auth/rbac";
 import { loginAsAdmin } from "../../support/api/auth/session";
 import { loginToUI } from "../../support/ui/session";
 import {
@@ -160,29 +161,16 @@ const createRoleWithPermission = (resource: string, action: string) => {
       name: roleName,
       description: "Rol GA10: solo facturación",
     }).its("status").should("eq", 201);
-    cy.request({
-      method: "POST",
-      url: `${AUTH()}/api/v1/permissions/`,
-      headers: { ...authed(token), "Idempotency-Key": idempotencyKey() },
-      body: { tenant_id: TENANT(), resource, action },
-    }).its("status").should("eq", 201);
-
-    cy.request({ url: `${AUTH()}/api/v1/roles`, qs: { tenant_id: TENANT() }, headers: authed(token) })
-      .its("body")
-      .then((roles: Array<{ Id: string; Name: string }>) => {
-        const role = roles.find((r) => r.Name === roleName)!;
-        cy.request({ url: `${AUTH()}/api/v1/permissions`, qs: { tenant_id: TENANT() }, headers: authed(token) })
-          .its("body")
-          .then((perms: Array<{ Id: string; Resource: string; Action: string }>) => {
-            const perm = perms.find((p) => p.Resource === resource && p.Action === action)!;
-            cy.request({
-              method: "POST",
-              url: `${AUTH()}/api/v1/rbac/roles/permissions/assign`,
-              headers: { ...authed(token), "Idempotency-Key": idempotencyKey() },
-              body: { tenant_id: TENANT(), role_id: role.Id, permission_id: perm.Id },
-            }).its("status").should("eq", 200);
-          });
-      });
+    // Los permisos son únicos por empresa: se reutiliza si ya existe (409).
+    ensurePermission(AUTH(), token, TENANT(), resource, action).then((perm) =>
+      cy
+        .request({ url: `${AUTH()}/api/v1/roles`, qs: { tenant_id: TENANT() }, headers: authed(token) })
+        .its("body")
+        .then((roles: Array<{ Id: string; Name: string }>) => {
+          const role = roles.find((r) => r.Name === roleName)!;
+          assignPermissionToRole(AUTH(), token, TENANT(), role.Id, perm.Id).its("status").should("eq", 200);
+        })
+    );
     return cy.wrap(roleName);
   });
 };
@@ -340,7 +328,9 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.get('[data-cy="app-nav"]').then(($n) => {
         const text = ($n[0] as HTMLElement).innerText;
         rec("navegacion.enlaces_admin", text);
-        expect(text).not.to.match(/Tenants|Roles|Permissions|Invoice Items/);
+        // Roles, Permisos y Empresas tienen funcionalidad desde los incrementos 1 y 2;
+        // las páginas sin funcionalidad siguen fuera del menú.
+        expect(text).not.to.match(/Tenants|Permissions|Invoice Items/);
       });
       shot("C04-login-exitoso-facturas");
 

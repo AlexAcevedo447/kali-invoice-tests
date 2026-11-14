@@ -1,4 +1,5 @@
-import { createRole, createTenant, createUser, getUserByEmail, login, type TenantResponse } from "../../support/api/auth/auth-client";
+import { createTenant, createUser, getUserByEmail, login, type TenantResponse } from "../../support/api/auth/auth-client";
+import { ensureRoleWithPermissions } from "../../support/api/auth/rbac";
 import { loginAsAdmin } from "../../support/api/auth/session";
 import {
   createCustomer,
@@ -78,27 +79,43 @@ const ensureDemoTenant = (ptoken: string): Cypress.Chainable<TenantResponse> =>
     });
   });
 
-/** Busca o crea el rol "invoicing" en la empresa demo. */
-const ensureDemoRole = (ptoken: string, tenantId: string): Cypress.Chainable<string> => {
-  const findRole = () =>
-    get<Array<{ Id: string; Name: string }>>(ptoken, `${AUTH()}/api/v1/roles`, { tenant_id: tenantId }).then((r) => {
-      expect(r.status, "listar roles de la empresa demo").to.eq(200);
-      return cy.wrap(r.body.find((role) => role.Name.toLowerCase() === DEMO_ROLE) ?? null);
-    });
-  return findRole().then((role) => {
-    if (role) return cy.wrap(role.Id);
-    return createRole(AUTH(), ptoken, idempotencyKey(), {
-      tenant_id: tenantId,
-      name: DEMO_ROLE,
-      description: "Acceso al módulo de facturación (empresa demo)",
-    }).then((created) => {
-      expect([201, 409], "rol invoicing").to.include(created.status);
-      return findRole().then((again) => {
-        expect(again, "rol invoicing disponible").to.exist;
-        return again!.Id;
-      });
-    });
-  });
+/**
+ * Permisos del rol "invoicing" (MATRIZ_PERMISOS.md): con la autorización por
+ * operación de facturación, el rol solo funciona si tiene estos permisos.
+ */
+const INVOICING_GRANTS: Array<[string, string]> = [
+  ["invoices", "manage"],
+  ["invoice-items", "manage"],
+  ["customers", "manage"],
+  ["products", "manage"],
+];
+
+/** Busca o crea el rol "invoicing" en la empresa demo y completa sus permisos (idempotente). */
+const ensureDemoRole = (ptoken: string, tenantId: string): Cypress.Chainable<string> =>
+  ensureRoleWithPermissions(AUTH(), ptoken, tenantId, DEMO_ROLE, INVOICING_GRANTS, "Acceso al módulo de facturación (empresa demo)").then(
+    (role) => role.Id
+  );
+
+/**
+ * Si la empresa demo ya existe, completa los permisos de su rol "invoicing"
+ * (empresas demo creadas antes de la autorización por operación).
+ */
+const ensureExistingDemoRolePermissions = (): void => {
+  loginAsAdmin().then((platform) =>
+    get<TenantResponse[]>(platform.access_token, `${AUTH()}/api/v1/tenants/`).then((list) => {
+      const demo = list.body.find((t) => t.Code === DEMO_TENANT.code);
+      if (!demo) return;
+      cy
+        .request<Array<{ Id: string; Name: string }>>({
+          url: `${AUTH()}/api/v1/roles`,
+          qs: { tenant_id: demo.Id },
+          headers: authed(platform.access_token),
+        })
+        .then((roles) => {
+          if (roles.body.some((r) => r.Name.toLowerCase() === DEMO_ROLE)) ensureDemoRole(platform.access_token, demo.Id);
+        });
+    })
+  );
 };
 
 /**
@@ -217,6 +234,7 @@ describe("Semilla de datos para el video (empresa demo)", () => {
     expect(email, "DEMO_ADMIN_EMAIL configurado").to.be.a("string").and.not.be.empty;
     expect(password, "DEMO_ADMIN_PASSWORD configurado").to.be.a("string").and.not.be.empty;
 
+    ensureExistingDemoRolePermissions();
     ensureDemoSession(email, password).then((token) => {
       const customers: CustomerResponse[] = [];
       const products: ProductResponse[] = [];
