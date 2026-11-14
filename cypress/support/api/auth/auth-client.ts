@@ -8,10 +8,14 @@
  * snake_case.
  */
 
+/**
+ * Login por correo y contraseña: el tenant lo resuelve el servidor. `tenant_code`
+ * (código legible de empresa) solo se envía si el servidor lo pide (409).
+ */
 export interface LoginRequest {
-  tenant_id: string;
   email: string;
   password: string;
+  tenant_code?: string;
 }
 
 export interface LoginResponse {
@@ -19,6 +23,8 @@ export interface LoginResponse {
   token_type: string;
   expires_in: number;
   tenant_id: string;
+  tenant_name: string;
+  tenant_code: string;
   user_id: string;
   email: string;
   needs_rehash: boolean;
@@ -110,6 +116,28 @@ export function getUserByEmail(
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+    failOnStatusCode: false,
+  });
+}
+
+export interface TenantResponse {
+  Id: string;
+  Name: string;
+  Code: string;
+  Status: string;
+}
+
+/** Crea una empresa (solo el tenant de plataforma puede hacerlo). */
+export function createTenant(
+  baseUrl: string,
+  accessToken: string,
+  payload: { name: string; code?: string }
+): Cypress.Chainable<Cypress.Response<TenantResponse>> {
+  return cy.request<TenantResponse>({
+    method: "POST",
+    url: `${baseUrl}/api/v1/tenants/`,
+    headers: { Authorization: `Bearer ${accessToken}`, "Idempotency-Key": Cypress._.uniqueId("tenant-") + Date.now() },
+    body: payload,
     failOnStatusCode: false,
   });
 }

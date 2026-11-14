@@ -1,5 +1,6 @@
-import { createInvoice } from "../../../support/api/invoice/invoice-client";
-import { idempotencyKey, uuid } from "../../../support/data/unique";
+import { createInvoice, seedCatalog } from "../../../support/api/invoice/invoice-client";
+import { loginAsAdmin } from "../../../support/api/auth/session";
+import { idempotencyKey } from "../../../support/data/unique";
 import { loginToUI } from "../../../support/ui/session";
 import { captureEvidence } from "../../../support/evidence";
 
@@ -14,14 +15,19 @@ const INVOICES_TO_CREATE = 15;
 
 describe("CP-E2E-005 - Listado y paginación de facturas", () => {
   before(() => {
-    for (let i = 0; i < INVOICES_TO_CREATE; i += 1) {
-      createInvoice(Cypress.env("INVOICE_API_URL"), idempotencyKey(), {
-        customer_id: uuid(),
-        items: [{ item_id: uuid(), quantity: 1, unit_price: 100 }],
-      }).then((response) => {
-        expect(response.status).to.eq(201);
-      });
-    }
+    // Cada factura usa un cliente distinto del catálogo del tenant autenticado.
+    loginAsAdmin().then((session) => {
+      for (let i = 0; i < INVOICES_TO_CREATE; i += 1) {
+        seedCatalog(Cypress.env("INVOICE_API_URL"), session.access_token, `CP-E2E-005 ${i}`).then(({ customer, product }) => {
+          createInvoice(
+            Cypress.env("INVOICE_API_URL"),
+            idempotencyKey(),
+            { customer_id: customer.ID, items: [{ item_id: product.ID, quantity: 1, unit_price: 100 }] },
+            session.access_token
+          ).its("status").should("eq", 201);
+        });
+      }
+    });
   });
 
   beforeEach(() => {
@@ -41,21 +47,23 @@ describe("CP-E2E-005 - Listado y paginación de facturas", () => {
         expect(page1).to.have.length(10);
         captureEvidence("10-CP-E2E-005-facturas-pagina-1");
 
+        // La paginación es del servidor: se espera la respuesta de la página 2.
         cy.get('button[aria-label="Next Page"]').click();
+        cy.wait("@listInvoices").its("request.url").should("contain", "page=2");
 
         cy.get('[data-cy="invoice-table"] tbody tr').should(
           "have.length.greaterThan",
           0
         );
 
-        cy.get('[data-cy="invoice-row-customer"]')
-          .then(($cells2) => [...$cells2].map((el) => el.textContent?.trim()))
-          .then((page2) => {
-            expect(page2.length).to.be.greaterThan(0);
-            const overlap = page2.filter((customer) => page1.includes(customer));
-            expect(overlap, "la página 2 no debe repetir clientes de la página 1").to.have.length(0);
-            captureEvidence("11-CP-E2E-005-facturas-pagina-2");
-          });
+        // should() reintenta hasta que la tabla muestre la nueva página.
+        cy.get('[data-cy="invoice-row-customer"]').should(($cells2) => {
+          const page2 = [...$cells2].map((el) => el.textContent?.trim());
+          expect(page2.length).to.be.greaterThan(0);
+          const overlap = page2.filter((customer) => page1.includes(customer));
+          expect(overlap, "la página 2 no debe repetir clientes de la página 1").to.have.length(0);
+        });
+        captureEvidence("11-CP-E2E-005-facturas-pagina-2");
       });
   });
 });

@@ -7,7 +7,6 @@ import { login, LoginResponse } from "./auth-client";
  */
 export function loginAsAdmin(): Cypress.Chainable<LoginResponse> {
   return login(Cypress.env("AUTH_API_URL"), {
-    tenant_id: Cypress.env("AUTH_TENANT_ID"),
     email: Cypress.env("AUTH_ADMIN_EMAIL"),
     password: Cypress.env("AUTH_ADMIN_PASSWORD"),
   }).then((response) => {

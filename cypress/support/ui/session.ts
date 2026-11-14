@@ -25,7 +25,6 @@ export function loginToUI(): void {
       cy.visit("/login");
 
       login(Cypress.env("AUTH_API_URL"), {
-        tenant_id: tenantId,
         email,
         password,
       }).then((response) => {
@@ -40,6 +39,7 @@ export function loginToUI(): void {
                 status: "authenticated",
                 accessToken: session.access_token,
                 tenantId: session.tenant_id,
+                tenantName: session.tenant_name,
                 userId: session.user_id,
                 email: session.email,
                 roles: session.roles,
@@ -57,6 +57,11 @@ export function loginToUI(): void {
           const raw = win.localStorage.getItem(AUTH_STORAGE_KEY);
           expect(raw, "auth-session-store presente en localStorage").to.be.a("string");
           expect(raw as string).to.contain("authenticated");
+          // El access token dura ~60 min: si está por vencer, se recrea la sesión
+          // (corridas largas no deben fallar por un token cacheado al inicio).
+          const token = JSON.parse(raw as string).state.accessToken as string;
+          const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+          expect(payload.exp * 1000 - Date.now(), "token vigente").to.be.greaterThan(120_000);
         });
       },
     }

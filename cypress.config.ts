@@ -51,5 +51,8 @@ export default defineConfig({
     // Credentials of a pre-seeded Auth admin able to create roles/users.
     AUTH_ADMIN_EMAIL: "",
     AUTH_ADMIN_PASSWORD: "",
+    // Administrador de la empresa demo usada por cypress/e2e/demo/seed-video-demo.cy.ts.
+    DEMO_ADMIN_EMAIL: "",
+    DEMO_ADMIN_PASSWORD: "",
   },
 });

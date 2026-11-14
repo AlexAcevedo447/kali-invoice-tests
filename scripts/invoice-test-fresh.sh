@@ -25,7 +25,7 @@
 #
 # Variable opcional:
 #   INVOICE_SERVICE_DIR  ruta al repo de kali-invoice-service
-#                        (default: /Users/jhon/Documents/Personal/KALI/kali-invoice-service)
+#                        (default: repo hermano ../kali-invoice-service)
 
 set -eu
 
@@ -43,7 +43,7 @@ esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-INVOICE_SERVICE_DIR="${INVOICE_SERVICE_DIR:-/Users/jhon/Documents/Personal/KALI/kali-invoice-service}"
+INVOICE_SERVICE_DIR="${INVOICE_SERVICE_DIR:-$REPO_ROOT/../kali-invoice-service}"
 INVOICE_REPO_MARKER="kali-invoice-service"
 APP_PORT=8080
 LOG_FILE="/tmp/kali-invoice-service-cypress.log"
@@ -99,14 +99,17 @@ echo "== 3) Levantando kali-invoice-service contra la base exclusiva de Cypress 
   POSTGRES_DB=kali_invoices_cypress \
   POSTGRES_SSLMODE=disable \
   RABBITMQ_ENABLED=false \
+  AUTH_JWKS_URL="${AUTH_JWKS_URL:-http://localhost:18080/.well-known/jwks.json}" \
+  JWT_ISSUER="${JWT_ISSUER:-http://localhost:8080}" \
+  JWT_AUDIENCE="${JWT_AUDIENCE:-account}" \
   nohup go run ./cmd/api > "$LOG_FILE" 2>&1 &
   disown
 )
 
-echo "== 4) Esperando a que http://localhost:$APP_PORT/api/v1/invoices responda =="
+echo "== 4) Esperando a que http://localhost:$APP_PORT/api/v1/metrics responda =="
 READY=""
 for i in $(seq 1 30); do
-  CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${APP_PORT}/api/v1/invoices" 2>/dev/null || true)"
+  CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${APP_PORT}/api/v1/metrics" 2>/dev/null || true)"
   if [ "$CODE" = "200" ]; then
     READY="1"
     break
@@ -120,14 +123,15 @@ if [ -z "$READY" ]; then
   exit 1
 fi
 
-echo "== 5) Confirmando que la lista de facturas está vacía =="
-BODY="$(curl -s "http://localhost:${APP_PORT}/api/v1/invoices")"
-if [ "$BODY" != "[]" ]; then
-  echo "La base no está vacía (respuesta: $BODY)." >&2
+echo "== 5) Confirmando que la base exclusiva no tiene facturas =="
+# La API exige token (tenant del JWT), así que la verificación se hace en la BD.
+COUNT="$(docker exec kali-invoice-cypress-db psql -U cypress -d kali_invoices_cypress -At -c "SELECT count(*) FROM invoices" 2>/dev/null || echo "?")"
+if [ "$COUNT" != "0" ]; then
+  echo "La base no está vacía (facturas: $COUNT)." >&2
   echo "No se ejecutan las pruebas para evitar un falso negativo en CP-INT-005." >&2
   exit 1
 fi
-echo "OK: GET /api/v1/invoices -> []"
+echo "OK: kali_invoices_cypress.invoices -> 0 filas"
 
 if [ "$MODE" = "prepare" ]; then
   echo "== 6) Modo 'prepare': preparación lista, no se ejecuta Cypress aquí =="

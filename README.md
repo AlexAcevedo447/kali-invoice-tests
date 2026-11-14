@@ -22,8 +22,13 @@ suministran localmente copiando `cypress.env.example.json` a `cypress.env.json`
 
 ```bash
 cp cypress.env.example.json cypress.env.json
-# editar cypress.env.json con los valores reales del entorno local
 ```
+
+Los valores del ejemplo coinciden con el entorno que levanta `npm run stack:up` en
+`invoice-kali-front` usando los `.env.example` de cada repo (usuario semilla
+`master@local.dev`, empresa `master-tenant`, front en 15173). Son credenciales de
+ejemplo, solo locales. Si usas `npm run dev` para el front, cambia `FRONT_URL` a
+`http://localhost:5173`.
 
 Variables requeridas:
 
@@ -31,8 +36,8 @@ Variables requeridas:
 | -------------------- | ---------------------------------------------------------------------------- |
 | `AUTH_API_URL`        | URL base de `kali-auth-context` (sin sufijo de path), ej. `http://localhost:18080` |
 | `INVOICE_API_URL`     | URL base de `kali-invoice-service` (sin sufijo de path), ej. `http://localhost:8080` |
-| `FRONT_URL`           | URL base de `invoice-kali-front`, reservada para futuras pruebas UI/E2E     |
-| `AUTH_TENANT_ID`      | Tenant usado para autenticar y para crear roles/usuarios de prueba          |
+| `FRONT_URL`           | URL base de `invoice-kali-front` (baseUrl de las pruebas UI), ej. `http://localhost:15173` |
+| `AUTH_TENANT_ID`      | Tenant (interno) del administrador; el login ya no lo envía, solo se usa para comprobar que el servidor lo resolvió y como tenant de los roles/usuarios de prueba |
 | `AUTH_ADMIN_EMAIL`    | Email de un usuario administrador ya sembrado en Auth                      |
 | `AUTH_ADMIN_PASSWORD` | Password de ese usuario administrador                                      |
 
@@ -143,6 +148,30 @@ No debe importar código de:
 | CP-INT-005 | `cypress/e2e/api/invoice/CP-INT-005-list-invoices.cy.ts` | Invoice |
 | CP-INT-006 | `cypress/e2e/api/invoice/CP-INT-006-create-invoice.cy.ts` | Invoice |
 | CP-INT-007 | `cypress/e2e/api/invoice/CP-INT-007-invoice-idempotency.cy.ts` | Invoice (idempotencia) |
+| CP-INT-008 | `cypress/e2e/api/auth/CP-INT-008-login-multi-tenant.cy.ts` | Auth (login multiempresa: 409 sin código, `tenant_code`, código duplicado → 409) |
+| CP-INT-009 | `cypress/e2e/api/invoice/CP-INT-009-create-invoice-due-date.cy.ts` | Invoice (regresión: vencimiento anterior a la emisión al crear → 400) |
+| CP-SEC-001 | `cypress/e2e/api/security/CP-SEC-001-multi-tenant-isolation.cy.ts` | Auth + Invoice (aislamiento Tenant A vs Tenant B) |
+| GA10 | `cypress/e2e/manual/GA10-validacion-manual.cy.ts` | UI completa (manual de usuario) |
+
+Semilla del video (no es prueba): `cypress/e2e/demo/seed-video-demo.cy.ts`. Es repetible: reutiliza
+empresa, administrador, catálogo y facturas existentes y solo crea lo que falte (nunca borra).
+Si `DEMO_ADMIN_EMAIL` no puede iniciar sesión, crea con el administrador de plataforma la empresa
+"Empresa Demo" (código `demo`), el usuario y el rol `invoicing`.
+
+## Contrato multi-tenant vigente
+
+- **Login**: `POST /api/v1/auth/login` con `{ email, password }`. El servidor resuelve el
+  tenant de la cuenta; `tenant_code` (código legible de empresa) solo se envía si responde
+  `409 company code required` (mismo correo y contraseña en varias empresas).
+- **Facturación**: todas las rutas (salvo `/metrics`) exigen `Authorization: Bearer`; el
+  tenant sale del claim `tid`. Clientes y productos deben existir en el catálogo del tenant
+  (`/api/v1/customers`, `/api/v1/products`); `support/api/invoice/invoice-client.ts`
+  expone `seedCatalog` para crearlos.
+- **Auth**: el tenant de las rutas protegidas es el del token. Solo el tenant de plataforma
+  (el maestro sembrado) administra empresas (`/tenants`) y puede indicar otro tenant destino.
+
+Si Electron no logra conectarse ("Timed out waiting for the browser to connect"), ejecutar
+con Chrome: `npx cypress run --browser chrome --headless --spec ...`.
 
 ## Hallazgos de contrato real (verificados contra el código de los servicios)
 

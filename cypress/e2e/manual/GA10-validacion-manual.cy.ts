@@ -1,5 +1,10 @@
-import { createInvoice, InvoiceResponse } from "../../support/api/invoice/invoice-client";
-import { createRole, createUser, getUserByEmail } from "../../support/api/auth/auth-client";
+import {
+  createInvoice,
+  createCustomer,
+  createProduct,
+  InvoiceResponse,
+} from "../../support/api/invoice/invoice-client";
+import { createRole, createTenant, createUser, getUserByEmail } from "../../support/api/auth/auth-client";
 import { loginAsAdmin } from "../../support/api/auth/session";
 import { loginToUI } from "../../support/ui/session";
 import {
@@ -31,6 +36,18 @@ const PAGE_SIZE = 10;
 const PASSWORD = "Manual!Prueba2026";
 
 const obs: Record<string, unknown> = {};
+
+/**
+ * Token del administrador y catálogo propio del tenant, creados en el before()
+ * global. Las facturas solo pueden referenciar clientes/productos del tenant.
+ */
+let apiToken = "";
+const catalog = {
+  customerA: { id: "", name: "", document: "" },
+  customerB: { id: "", name: "", document: "" },
+  productA: { id: "", code: "", name: "" },
+  productB: { id: "", code: "", name: "" },
+};
 const rec = (key: string, value: unknown) => {
   obs[key] = value;
 };
@@ -60,16 +77,42 @@ const invoiceNumber = (id: string) => `FAC-${id.slice(0, 8).toUpperCase()}`;
 
 const backendTotal = () =>
   cy
-    .request(`${INVOICE()}/api/v1/invoices?page=1&page_size=1`)
+    .request({ url: `${INVOICE()}/api/v1/invoices?page=1&page_size=1`, headers: authed(apiToken) })
     .then((r) => Number(r.headers["x-total-count"]));
 
 const getInvoice = (id: string) =>
-  cy.request<InvoiceResponse>(`${INVOICE()}/api/v1/invoices/${id}`).its("body");
+  cy
+    .request<InvoiceResponse>({ url: `${INVOICE()}/api/v1/invoices/${id}`, headers: authed(apiToken) })
+    .its("body");
 
 const allInvoices = () =>
   cy
-    .request<InvoiceResponse[]>(`${INVOICE()}/api/v1/invoices?page=1&page_size=100`)
+    .request<InvoiceResponse[]>({ url: `${INVOICE()}/api/v1/invoices?page=1&page_size=100`, headers: authed(apiToken) })
     .its("body");
+
+/** Factura creada por API con el catálogo del tenant. */
+const apiInvoice = (items: Array<{ unit_price: number; quantity?: number; product?: string; taxes?: Array<{ code: string; kind?: string; rate: number }> }>, customer = catalog.customerA.id) =>
+  createInvoice(
+    INVOICE(),
+    idempotencyKey(),
+    {
+      customer_id: customer,
+      items: items.map((i) => ({
+        item_id: i.product ?? catalog.productA.id,
+        quantity: i.quantity ?? 1,
+        unit_price: i.unit_price,
+        taxes: i.taxes,
+      })),
+    },
+    apiToken
+  );
+
+/** Elige una opción de un selector de catálogo escribiendo texto legible. */
+const pickFromCatalog = (cySelector: string, text: string) => {
+  cy.get(`[data-cy="${cySelector}"]`).click();
+  cy.get(".p-dropdown-panel .p-dropdown-filter").clear().type(text);
+  cy.contains(".p-dropdown-panel .p-dropdown-item", text, { timeout: 10000 }).click();
+};
 
 const idFromNumber = (invoices: InvoiceResponse[], number: string) =>
   invoices.find((i) => invoiceNumber(i.ID) === number.trim());
@@ -78,7 +121,7 @@ const patchInvoice = (id: string, action: "pay" | "cancel") =>
   cy.request({
     method: "PATCH",
     url: `${INVOICE()}/api/v1/invoices/${id}/${action}`,
-    headers: { "Idempotency-Key": idempotencyKey() },
+    headers: { ...authed(apiToken), "Idempotency-Key": idempotencyKey() },
     failOnStatusCode: false,
   });
 
@@ -95,12 +138,13 @@ const expectActionsClosed = (number: string, label: "Pagada" | "Cancelada") => {
   });
 };
 
-const authed = (token: string) => ({ Authorization: `Bearer ${token}` });
+function authed(token: string) {
+  return { Authorization: `Bearer ${token}` };
+}
 
 /** Login real por formulario. */
-const uiLogin = (email: string, password: string, tenant = TENANT()) => {
+const uiLogin = (email: string, password: string) => {
   cy.visit("/login");
-  cy.get("#tenantId").type(tenant);
   cy.get("#email").type(email);
   cy.get("#password").type(password, { log: false });
   cy.contains("button", "Sign In").click();
@@ -155,8 +199,39 @@ const fillUserForm = (email: string, password: string, role?: string) => {
 };
 
 describe("GA10 - Validación funcional para el manual de usuario", () => {
+  before(() => {
+    loginAsAdmin().then((session) => {
+      apiToken = session.access_token;
+      const suffix = Date.now().toString().slice(-6);
+      const customers: Array<[keyof typeof catalog, string, string]> = [
+        ["customerA", `Comercial Andina GA10 ${suffix}`, `900${suffix}1`],
+        ["customerB", `Distribuciones Caribe GA10 ${suffix}`, `800${suffix}2`],
+      ];
+      customers.forEach(([key, name, document]) => {
+        createCustomer(INVOICE(), apiToken, { name, document }).then((r) => {
+          expect(r.status).to.eq(201);
+          Object.assign(catalog[key], { id: r.body.ID, name, document });
+        });
+      });
+      const products: Array<[keyof typeof catalog, string, string, number]> = [
+        ["productA", `SRV-${suffix}`, `Servicio de consultoría GA10 ${suffix}`, 100],
+        ["productB", `LIC-${suffix}`, `Licencia anual GA10 ${suffix}`, 50],
+      ];
+      products.forEach(([key, code, name, price]) => {
+        createProduct(INVOICE(), apiToken, { code, name, unit_price: price }).then((r) => {
+          expect(r.status).to.eq(201);
+          Object.assign(catalog[key], { id: r.body.ID, code, name });
+        });
+      });
+    });
+  });
+
   beforeEach(() => {
     cy.viewport(1280, 720);
+    // Token de API renovado en cada prueba: la suite puede durar más que su vigencia.
+    loginAsAdmin().then((session) => {
+      apiToken = session.access_token;
+    });
   });
 
   after(() => {
@@ -170,13 +245,14 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.contains("h2", "Login").should("be.visible");
       shot("C01-login-vacio");
 
+      // El login ya no pide Tenant ID: solo correo y contraseña.
+      cy.get("#tenantId").should("not.exist");
+      cy.contains("label", "Tenant").should("not.exist");
       cy.contains("button", "Sign In").click();
-      cy.contains("Tenant ID is required").should("be.visible");
       cy.contains("Enter a valid email").should("be.visible");
       cy.contains("Password is required").should("be.visible");
       shot("C02-login-validaciones-vacio");
 
-      cy.get("#tenantId").type(TENANT());
       cy.get("#email").type("correo-invalido");
       cy.get("#password").type("x");
       cy.contains("button", "Sign In").click();
@@ -184,10 +260,11 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       shot("C02b-login-email-invalido");
     });
 
-    const failedLogin = (key: string, tenant: string, email: string, password: string) => {
+    const failedLogin = (key: string, email: string, password: string) => {
       cy.intercept("POST", "**/api/v1/auth/login").as("login");
-      uiLogin(email, password, tenant);
+      uiLogin(email, password);
       cy.wait("@login").then((i) => {
+        expect(i.request.body, "el login no envía tenant").not.to.have.property("tenant_id");
         rec(`login.${key}.http`, { status: i.response?.statusCode, response: i.response?.body });
         expect(i.response?.statusCode).to.eq(401);
       });
@@ -202,16 +279,46 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     };
 
     it("1.2 contraseña incorrecta muestra \"Credenciales incorrectas.\"", () => {
-      failedLogin("password_incorrecta", TENANT(), Cypress.env("AUTH_ADMIN_EMAIL"), "Incorrecta123!");
+      failedLogin("password_incorrecta", Cypress.env("AUTH_ADMIN_EMAIL"), "Incorrecta123!");
       shot("C03-login-credenciales-incorrectas");
     });
 
-    it("1.3 tenant inexistente", () => {
-      failedLogin("tenant_incorrecto", "tenant-que-no-existe", Cypress.env("AUTH_ADMIN_EMAIL"), Cypress.env("AUTH_ADMIN_PASSWORD"));
+    it("1.3 correo presente en dos empresas: se pide el código de empresa (nunca el UUID)", () => {
+      const email = uniqueEmail("ga10-dos-empresas");
+      const codeB = `ga10-b-${Date.now()}`;
+      loginAsAdmin().then((platform) => {
+        createTenant(AUTH(), platform.access_token, { name: `GA10 Empresa B ${Date.now()}`, code: codeB }).then((t) => {
+          expect(t.status).to.eq(201);
+          [TENANT(), t.body.Id].forEach((tenantId) =>
+            createUser(AUTH(), platform.access_token, idempotencyKey(), {
+              tenant_id: tenantId,
+              identification_number: uniqueIdentificationNumber(),
+              username: uniqueName("ga10-dos-empresas"),
+              email,
+              password: PASSWORD,
+            }).its("status").should("eq", 201)
+          );
+          cy.intercept("POST", "**/api/v1/auth/login").as("login");
+          uiLogin(email, PASSWORD);
+          cy.wait("@login").its("response.statusCode").should("eq", 409);
+          toasts().then((msgs) => {
+            rec("login.dos_empresas.toasts", msgs);
+            expect(msgs.join(" ")).to.contain("Tu correo pertenece a varias empresas. Indica el código de empresa.");
+          });
+          cy.get('[data-cy="login-company-code"]').should("be.visible").type(codeB);
+          shot("C03b-login-codigo-empresa");
+          cy.contains("button", "Sign In").click();
+          cy.wait("@login").then((i) => {
+            expect(i.request.body).to.deep.equal({ email, password: PASSWORD, tenant_code: codeB });
+            expect(i.response?.statusCode).to.eq(200);
+            expect(i.response?.body.tenant_id).to.eq(t.body.Id);
+          });
+        });
+      });
     });
 
     it("1.4 correo inexistente", () => {
-      failedLogin("correo_inexistente", TENANT(), "no-existe@local.dev", "Incorrecta123!");
+      failedLogin("correo_inexistente", "no-existe@local.dev", "Incorrecta123!");
     });
 
     it("1.5 login correcto: redirección, barra de navegación y sesión persistente", () => {
@@ -333,9 +440,9 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     });
 
     it("1b.3 la sesión vence mientras se usa la aplicación", () => {
-      visitWithSession("/invoicing/invoices", { expiresAt: Date.now() + 6_000 });
-      cy.contains("h1", "Gestión de Facturas").should("be.visible");
-      cy.location("pathname", { timeout: 15000 }).should("eq", "/login");
+      visitWithSession("/invoicing/invoices", { expiresAt: Date.now() + 20_000 });
+      cy.contains("h1", "Gestión de Facturas", { timeout: 15000 }).should("be.visible");
+      cy.location("pathname", { timeout: 30000 }).should("eq", "/login");
       expectExpiredRedirect("vence_en_uso");
     });
   });
@@ -346,10 +453,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       // Garantiza más de 20 facturas, con montos distintos para el ordenamiento.
       const prices = [50, 975, 320, 10, 640, 1500, 75, 210, 880, 430, 1200, 5, 60, 70, 80, 90, 110, 120, 130, 140, 150, 160, 170, 180, 190];
       prices.forEach((price) => {
-        createInvoice(INVOICE(), idempotencyKey(), {
-          customer_id: uuid(),
-          items: [{ item_id: uuid(), quantity: 1, unit_price: price, taxes: [{ code: "IVA", kind: "DEBIT", rate: 0.19 }] }],
-        }).its("status").should("eq", 201);
+        apiInvoice([{ unit_price: price, taxes: [{ code: "IVA", kind: "DEBIT", rate: 0.19 }] }]).its("status").should("eq", 201);
       });
     });
 
@@ -424,15 +528,16 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.get(".p-dialog").should("be.visible");
       cy.contains(".p-dialog label", "Rate (%)").should("exist");
       shot("C19-crear-factura-formulario");
+      // Cliente y producto se eligen en selectores legibles: no hay campos de UUID.
+      cy.contains(".p-dialog label", "Cliente").should("exist");
+      cy.contains(".p-dialog label", "Producto").should("exist");
+      cy.contains(".p-dialog label", /Customer ID|Item ID/).should("not.exist");
+      cy.get('[data-cy="customer-select"]').should("be.visible");
+      cy.get('[data-cy="product-select-0"]').should("be.visible");
       cy.contains(".p-dialog button", "Create Invoice").click();
-      cy.contains(".p-dialog", "Customer ID is required").should("be.visible");
-      cy.contains(".p-dialog", "Item ID is required").should("be.visible");
+      cy.contains(".p-dialog", "Selecciona un cliente").should("be.visible");
+      cy.contains(".p-dialog", "Selecciona un producto").should("be.visible");
       cy.contains(".p-dialog", "Unit price must be > 0").should("be.visible");
-      cy.get("#customerId").type("no-es-uuid");
-      cy.get('[id="items.0.itemId"]').type("tampoco");
-      cy.contains(".p-dialog button", "Create Invoice").click();
-      cy.contains(".p-dialog", "Customer ID must be a valid UUID").should("be.visible");
-      cy.contains(".p-dialog", "Item ID must be a valid UUID").should("be.visible");
       shot("C19b-crear-factura-validaciones");
     });
 
@@ -443,13 +548,14 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.wait("@list");
       backendTotal().as("totalBefore");
       cy.contains("button", "Crear Factura").click();
-      const customer = uuid();
-      const item = uuid();
-      cy.get("#customerId").type(customer);
+      const customer = catalog.customerA;
+      const product = catalog.productA;
+      pickFromCatalog("customer-select", customer.name);
       cy.get("#dueDate").type("2027-02-28T10:00");
-      cy.get('[id="items.0.itemId"]').type(item);
+      pickFromCatalog("product-select-0", product.code);
+      // El precio unitario se precarga desde el producto del catálogo.
+      cy.get('[id="items.0.unitPrice"]').should("have.value", "100");
       cy.get('[id="items.0.quantity"]').clear().type("2");
-      cy.get('[id="items.0.unitPrice"]').clear().type("100");
       cy.get('[id="items.0.taxes.0.rate"]').clear().type("19");
       shot("C19c-crear-factura-diligenciado");
       cy.contains(".p-dialog button", "Create Invoice").click();
@@ -459,11 +565,13 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         const response = i.response?.body as InvoiceResponse;
         rec("crear.http", { request: body, status: i.response?.statusCode, response_total: response?.Total, response_id: response?.ID });
         expect(i.response?.statusCode).to.eq(201);
-        expect(body).to.have.property("customer_id", customer);
+        expect(body).to.have.property("customer_id", customer.id);
         expect(body).not.to.have.property("customerId");
-        expect(body.items[0]).to.include({ item_id: item, quantity: 2, unit_price: 100 });
+        expect(body).not.to.have.property("tenant_id");
+        expect(body.items[0]).to.include({ item_id: product.id, quantity: 2, unit_price: 100 });
         expect(body.items[0].taxes[0]).to.deep.equal({ code: "IVA", kind: "DEBIT", rate: 0.19 });
-        expect(response.CustomerID).to.eq(customer);
+        expect(response.CustomerID).to.eq(customer.id);
+        expect(response.CustomerName).to.eq(customer.name);
         expect(response.Total).to.eq(238);
         cy.wrap(response.ID).as("createdId");
       });
@@ -473,10 +581,15 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       });
       cy.get(".p-dialog:visible").should("not.exist");
       cy.get<string>("@createdId").then((id) => {
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", customer).and("contain.text", "$238.00");
+        // La fila muestra nombre y documento del cliente, nunca su UUID.
+        cy.contains(ROWS, invoiceNumber(id))
+          .should("contain.text", customer.name)
+          .and("contain.text", customer.document)
+          .and("not.contain.text", customer.id)
+          .and("contain.text", "$238.00");
         shot("C19d-crear-factura-en-listado");
         cy.reload();
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", customer);
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", customer.name);
       });
       cy.get<number>("@totalBefore").then((before) => {
         backendTotal().should("eq", before + 1);
@@ -484,14 +597,10 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     });
 
     it("2.5 editar factura Pendiente: cabecera e ítems (modificar y añadir) persisten tras recargar", () => {
-      const customer = uuid();
-      createInvoice(INVOICE(), idempotencyKey(), {
-        customer_id: customer,
-        items: [{ item_id: uuid(), quantity: 1, unit_price: 999, taxes: [{ code: "IVA", kind: "DEBIT", rate: 0.19 }] }],
-      }).then((r) => {
+      apiInvoice([{ unit_price: 999, taxes: [{ code: "IVA", kind: "DEBIT", rate: 0.19 }] }]).then((r) => {
         const id = r.body.ID;
-        const newCustomer = uuid();
-        const newItem = uuid();
+        const newCustomer = catalog.customerB;
+        const newProduct = catalog.productB;
         cy.intercept("PUT", "**/api/v1/invoices/*").as("update");
         cy.intercept("PUT", "**/api/v1/invoice-items/*").as("itemUpdate");
         cy.intercept("POST", "**/api/v1/invoice-items").as("itemCreate");
@@ -503,30 +612,30 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
 
         // Campos como los ve el usuario: cabecera e ítems editables; Issue Date e
         // Item ID de líneas ya guardadas bloqueados (el backend no los modifica).
-        cy.get("#customerId").should("not.be.disabled");
+        cy.get('[data-cy="customer-select"]').should("not.have.class", "p-disabled").and("contain.text", catalog.customerA.name);
         cy.get("#dueDate").should("not.be.disabled");
         cy.get("#issueDate").should("be.disabled");
-        cy.get('[id="items.0.itemId"]').should("be.disabled");
+        cy.get('[data-cy="product-select-0"]').should("have.class", "p-disabled").and("contain.text", catalog.productA.name);
         ["quantity", "unitPrice", "taxes.0.code", "taxes.0.kind", "taxes.0.rate"].forEach((f) =>
           cy.get(`[id="items.0.${f}"]`).should("not.be.disabled")
         );
         cy.contains(".p-dialog button", "Add Item").should("not.be.disabled");
 
         // Modificar como un usuario.
-        cy.get("#customerId").should("have.value", customer).clear().type(newCustomer);
+        pickFromCatalog("customer-select", newCustomer.name);
         cy.get("#dueDate").clear().type("2027-01-15T10:00");
         cy.get('[id="items.0.quantity"]').clear().type("3");
         cy.contains(".p-dialog button", "Add Item").click();
-        cy.get('[id="items.1.itemId"]').should("not.be.disabled").type(newItem);
+        pickFromCatalog("product-select-1", newProduct.code);
+        cy.get('[id="items.1.unitPrice"]').should("have.value", "50");
         cy.get('[id="items.1.quantity"]').clear().type("2");
-        cy.get('[id="items.1.unitPrice"]').clear().type("50");
         shot("C20-editar-factura-formulario");
         cy.contains(".p-dialog button", "Update Invoice").click();
 
         cy.wait("@update").then((i) => {
           rec("editar.http_cabecera", { request: i.request.body, status: i.response?.statusCode });
           expect(i.response?.statusCode).to.eq(200);
-          expect(i.request.body).to.deep.equal({ customer_id: newCustomer, due_date: new Date("2027-01-15T10:00").toISOString() });
+          expect(i.request.body).to.deep.equal({ customer_id: newCustomer.id, due_date: new Date("2027-01-15T10:00").toISOString() });
         });
         cy.wait("@itemUpdate").then((i) => {
           rec("editar.http_item_actualizado", { request: i.request.body, status: i.response?.statusCode });
@@ -536,7 +645,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         cy.wait("@itemCreate").then((i) => {
           rec("editar.http_item_nuevo", { request: i.request.body, status: i.response?.statusCode });
           expect(i.response?.statusCode).to.eq(201);
-          expect(i.request.body).to.deep.include({ invoice_id: id, item_id: newItem, quantity: 2, unit_price: 50 });
+          expect(i.request.body).to.deep.include({ invoice_id: id, item_id: newProduct.id, quantity: 2, unit_price: 50 });
         });
         toasts().then((t) => {
           rec("editar.toasts", t);
@@ -544,14 +653,15 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         });
         cy.get(".p-dialog:visible").should("not.exist");
         // 3 × 999 + 19 % = 3566.43; 2 × 50 + 18 % = 118 → 3684.43
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer).and("contain.text", "$3684.43");
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer.name).and("contain.text", "$3684.43");
         shot("C20b-editar-factura-resultado");
 
         cy.reload();
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer).and("contain.text", "$3684.43").and("contain.text", "15/1/2027");
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer.name).and("contain.text", "$3684.43").and("contain.text", "15/1/2027");
         getInvoice(id).then((inv) => {
           rec("editar.backend_despues", { CustomerID: inv.CustomerID, DueDate: inv.DueDate, Total: inv.Total, Items: inv.Items.length });
-          expect(inv.CustomerID).to.eq(newCustomer);
+          expect(inv.CustomerID).to.eq(newCustomer.id);
+          expect(inv.CustomerName).to.eq(newCustomer.name);
           expect(new Date(inv.DueDate).toISOString()).to.eq(new Date("2027-01-15T10:00").toISOString());
           expect(inv.Items).to.have.length(2);
           expect(inv.Total).to.be.closeTo(3684.43, 0.001);
@@ -560,13 +670,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     });
 
     it("2.5b editar factura Pendiente: eliminar una línea", () => {
-      createInvoice(INVOICE(), idempotencyKey(), {
-        customer_id: uuid(),
-        items: [
-          { item_id: uuid(), quantity: 1, unit_price: 100 },
-          { item_id: uuid(), quantity: 1, unit_price: 40 },
-        ],
-      }).then((r) => {
+      apiInvoice([{ unit_price: 100 }, { unit_price: 40, product: catalog.productB.id }]).then((r) => {
         const id = r.body.ID;
         cy.intercept("DELETE", "**/api/v1/invoice-items/*").as("itemDelete");
         cy.visit("/invoicing/invoices");
@@ -588,10 +692,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       const label = action === "pay" ? "Pagada" : "Cancelada";
       const error = action === "pay" ? "invoice is already paid" : "invoice is already canceled";
       it(`2.5${action === "pay" ? "c" : "d"} factura ${label}: no editable en UI y rechazada en backend`, () => {
-        createInvoice(INVOICE(), idempotencyKey(), {
-          customer_id: uuid(),
-          items: [{ item_id: uuid(), quantity: 1, unit_price: 100 }],
-        }).then((r) => {
+        apiInvoice([{ unit_price: 100 }]).then((r) => {
           const id = r.body.ID;
           const lineId = r.body.Items[0].ID;
           patchInvoice(id, action).its("status").should("eq", 200);
@@ -602,13 +703,13 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
 
           // Intentos forzados contra el backend (sin pasar por la UI).
           const forced = [
-            { method: "PUT", url: `${INVOICE()}/api/v1/invoices/${id}`, body: { customer_id: uuid(), due_date: "2027-12-31T00:00:00Z" } },
-            { method: "POST", url: `${INVOICE()}/api/v1/invoice-items`, body: { invoice_id: id, item_id: uuid(), quantity: 1, unit_price: 5 } },
+            { method: "PUT", url: `${INVOICE()}/api/v1/invoices/${id}`, body: { customer_id: catalog.customerB.id, due_date: "2027-12-31T00:00:00Z" } },
+            { method: "POST", url: `${INVOICE()}/api/v1/invoice-items`, body: { invoice_id: id, item_id: catalog.productB.id, quantity: 1, unit_price: 5 } },
             { method: "PUT", url: `${INVOICE()}/api/v1/invoice-items/${lineId}`, body: { quantity: 9, unit_price: 9 } },
             { method: "DELETE", url: `${INVOICE()}/api/v1/invoice-items/${lineId}` },
           ];
           forced.forEach((req) => {
-            cy.request({ ...req, headers: { "Idempotency-Key": idempotencyKey() }, failOnStatusCode: false }).then((res) => {
+            cy.request({ ...req, headers: { ...authed(apiToken), "Idempotency-Key": idempotencyKey() }, failOnStatusCode: false }).then((res) => {
               expect(res.status, `${req.method} ${req.url}`).to.eq(422);
               expect(res.body).to.deep.equal({ error });
             });
@@ -957,7 +1058,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         expect(t.join(" ")).not.to.contain("Inicio de sesión exitoso");
       });
       cy.location("pathname").should("eq", "/login");
-      cy.get("#tenantId").should("be.visible");
+      cy.get("#email").should("be.visible");
       shot("C18-usuario-sin-permisos");
     });
   });
