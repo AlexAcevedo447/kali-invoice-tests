@@ -92,7 +92,7 @@ const allInvoices = () =>
     .its("body");
 
 /** Factura creada por API con el catálogo del tenant. */
-const apiInvoice = (items: Array<{ unit_price: number; quantity?: number; product?: string; taxes?: Array<{ code: string; kind?: string; rate: number }> }>, customer = catalog.customerA.id) =>
+const apiInvoice = (items: Array<{ unit_price: number; quantity?: number; product?: string; taxes?: Array<{ code: string; kind: string; rate: number }> }>, customer = catalog.customerA.id) =>
   createInvoice(
     INVOICE(),
     idempotencyKey(),
@@ -516,7 +516,6 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.visit("/invoicing/invoices");
       cy.contains("button", "Crear Factura").click();
       cy.get(".p-dialog").should("be.visible");
-      cy.contains(".p-dialog label", "Rate (%)").should("exist");
       shot("C19-crear-factura-formulario");
       // Cliente y producto se eligen en selectores legibles: no hay campos de UUID.
       cy.contains(".p-dialog label", "Cliente").should("exist");
@@ -524,6 +523,10 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.contains(".p-dialog label", /Customer ID|Item ID/).should("not.exist");
       cy.get('[data-cy="customer-select"]').should("be.visible");
       cy.get('[data-cy="product-select-0"]').should("be.visible");
+      // Incremento 4: una línea nueva empieza sin impuestos; se agregan con "Agregar impuesto".
+      cy.get('[data-cy="item-0-no-taxes"]').should("contain.text", "Sin impuestos");
+      cy.get('[data-cy="item-0-tax-add"]').click();
+      cy.contains(".p-dialog label", "Rate (%)").should("exist");
       cy.contains(".p-dialog button", "Create Invoice").click();
       cy.contains(".p-dialog", "Selecciona un cliente").should("be.visible");
       cy.contains(".p-dialog", "Selecciona un producto").should("be.visible");
@@ -546,6 +549,9 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       // El precio unitario se precarga desde el producto del catálogo.
       cy.get('[id="items.0.unitPrice"]').should("have.value", "100");
       cy.get('[id="items.0.quantity"]').clear().type("2");
+      cy.get('[data-cy="item-0-tax-add"]').click();
+      cy.get('[id="items.0.taxes.0.code"]').type("IVA");
+      cy.get('[id="items.0.taxes.0.kind"]').select("DEBIT");
       cy.get('[id="items.0.taxes.0.rate"]').clear().type("19");
       shot("C19c-crear-factura-diligenciado");
       cy.contains(".p-dialog button", "Create Invoice").click();
@@ -619,6 +625,12 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         pickFromCatalog("product-select-1", newProduct.code);
         cy.get('[id="items.1.unitPrice"]').should("have.value", "50");
         cy.get('[id="items.1.quantity"]').clear().type("2");
+        // Incremento 4: la línea nueva no recibe un impuesto por defecto; se agrega explícito.
+        cy.get('[data-cy="item-1-no-taxes"]').should("be.visible");
+        cy.get('[data-cy="item-1-tax-add"]').click();
+        cy.get('[id="items.1.taxes.0.code"]').type("IVA");
+        cy.get('[id="items.1.taxes.0.kind"]').select("DEBIT");
+        cy.get('[id="items.1.taxes.0.rate"]').type("18");
         shot("C20-editar-factura-formulario");
         cy.contains(".p-dialog button", "Update Invoice").click();
 
@@ -636,6 +648,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
           rec("editar.http_item_nuevo", { request: i.request.body, status: i.response?.statusCode });
           expect(i.response?.statusCode).to.eq(201);
           expect(i.request.body).to.deep.include({ invoice_id: id, item_id: newProduct.id, quantity: 2, unit_price: 50 });
+          expect(i.request.body.taxes).to.deep.equal([{ code: "IVA", kind: "DEBIT", rate: 0.18 }]);
         });
         toasts().then((t) => {
           rec("editar.toasts", t);
@@ -801,7 +814,8 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.contains(ROWS, "Pendiente").find("button").then(($btns) => {
         const titles = [...$btns].map((b) => b.getAttribute("title"));
         rec("cancelar.tooltips_acciones", titles);
-        expect(titles).to.deep.equal(["Editar", "Cambiar estado", "Cancelar"]);
+        // "Ver" (incremento 4, D4-06) abre la vista de solo lectura.
+        expect(titles).to.deep.equal(["Ver", "Editar", "Cambiar estado", "Cancelar"]);
       });
       cy.contains(ROWS, "Pendiente").within(() => {
         cy.get("td:nth-child(1)").invoke("text").as("number", { type: "static" });

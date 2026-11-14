@@ -10,7 +10,8 @@
 
 export interface InvoiceItemTaxInput {
   code: string;
-  kind?: string;
+  /** Obligatorio y explícito: "DEBIT" o "CREDIT" (incremento 4, D4-03). */
+  kind: string;
   rate: number;
 }
 
