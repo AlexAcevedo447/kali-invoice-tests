@@ -155,6 +155,8 @@ No debe importar código de:
 | CP-INT-011 | `cypress/e2e/api/auth/CP-INT-011-rbac-admin.cy.ts` | Auth (RBAC: autorización por operación, unicidad, idempotencia, 409, no escalamiento, administrador efectivo, rol sembrado) |
 | CP-INT-012 | `cypress/e2e/api/invoice/CP-INT-012-invoice-permissions.cy.ts` | Invoice (permiso por operación) |
 | CP-E2E-009 | `cypress/e2e/ui/auth/CP-E2E-009-rbac-admin.cy.ts` | UI (roles, permisos y asignaciones) |
+| CP-INT-013 | `cypress/e2e/api/auth/CP-INT-013-users-admin.cy.ts` | Auth (usuarios: permisos, sin contraseñas, no escalar, 409 con roles, último administrador, tokens de usuario eliminado) |
+| CP-E2E-010 | `cypress/e2e/ui/auth/CP-E2E-010-users-admin.cy.ts` | UI (usuarios y menú por permisos) |
 | CP-SEC-001 | `cypress/e2e/api/security/CP-SEC-001-multi-tenant-isolation.cy.ts` | Auth + Invoice (aislamiento Tenant A vs Tenant B) |
 | GA10 | `cypress/e2e/manual/GA10-validacion-manual.cy.ts` | UI completa (manual de usuario) |
 

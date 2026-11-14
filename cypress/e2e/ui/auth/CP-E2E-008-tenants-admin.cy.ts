@@ -1,6 +1,7 @@
 import { createRole, createTenant, createUser, getUserByEmail } from "../../../support/api/auth/auth-client";
 import { loginAsAdmin } from "../../../support/api/auth/session";
 import { loginToUI, loginToUIAs } from "../../../support/ui/session";
+import { ensureRoleWithPermissions, grantRoleToUserByEmail } from "../../../support/api/auth/rbac";
 import { idempotencyKey, uniqueEmail, uniqueIdentificationNumber, uniqueName } from "../../../support/data/unique";
 
 /**
@@ -143,25 +144,11 @@ describe("CP-E2E-008 - Empresas: administrador de otra empresa (CA-05.7)", () =>
           email,
           password: PASSWORD,
         }).its("status").should("eq", 201);
-        createRole(AUTH(), ptoken, idempotencyKey(), { tenant_id: tenantId, name: "admin", description: "Administrador de la empresa" })
-          .its("status")
-          .should("eq", 201);
-        cy.request<Array<{ Id: string; Name: string }>>({
-          url: `${AUTH()}/api/v1/roles`,
-          qs: { tenant_id: tenantId },
-          headers: { Authorization: `Bearer ${ptoken}` },
-        }).then((roles) => {
-          const role = roles.body.find((r) => r.Name === "admin");
-          expect(role, "rol admin creado").to.exist;
-          getUserByEmail(AUTH(), ptoken, tenantId, email).then((user) => {
-            cy.request({
-              method: "POST",
-              url: `${AUTH()}/api/v1/rbac/users/roles/assign`,
-              headers: { Authorization: `Bearer ${ptoken}`, "Idempotency-Key": idempotencyKey() },
-              body: { tenant_id: tenantId, user_id: user.body.Id, role_id: role!.Id },
-            });
-          });
-        });
+        // Desde el incremento 3 el menú depende de permisos efectivos, no del nombre
+        // del rol: el administrador de la otra empresa necesita users/read.
+        ensureRoleWithPermissions(AUTH(), ptoken, tenantId, "admin", [["users", "read"]], "Administrador de la empresa").then((role) =>
+          grantRoleToUserByEmail(AUTH(), ptoken, tenantId, email, role.Id)
+        );
       });
     });
   });

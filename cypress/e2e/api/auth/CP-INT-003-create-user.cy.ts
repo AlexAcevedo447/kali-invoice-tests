@@ -1,6 +1,5 @@
 import { createUser } from "../../../support/api/auth/auth-client";
 import { loginAsAdmin } from "../../../support/api/auth/session";
-import { expectCreatedTextBody } from "../../../support/assertions/auth-responses";
 import {
   idempotencyKey,
   uniqueEmail,
@@ -20,10 +19,12 @@ describe("CP-INT-003 - Crear usuario", () => {
         password: "Str0ng!Passw0rd",
       }).then((response) => {
         expect(response.status).to.eq(201);
-        // Contrato real: la creación responde 201 con el texto plano "Created",
-        // por lo que no hay ningún dato (ni contraseña) que pueda quedar
-        // expuesto en esta respuesta.
-        expectCreatedTextBody(response.body);
+        // Desde el incremento 3 responde 201 con el usuario creado, que NUNCA
+        // incluye la contraseña ni su hash.
+        const created = response.body as Record<string, unknown>;
+        expect(created.Id).to.be.a("string").and.not.be.empty;
+        expect(created).to.include.keys("TenantId", "IdentificationNumber", "Username", "Email");
+        expect(created).not.to.have.property("Password");
         captureEvidence("03-CP-INT-003-crear-usuario");
       });
     });

@@ -40,7 +40,9 @@ describe("CP-INT-004 - Consultar usuario por email", () => {
           // Único requisito de seguridad exigido en esta prueba: la contraseña
           // original nunca viaja en texto plano en la respuesta (sin asumir que
           // el campo Password deba existir ni validar su formato de hash).
-          expect(response.body.Password).to.not.eq(plainPassword);
+          // Desde el incremento 3 la respuesta no incluye la contraseña ni su hash.
+          expect(response.body).not.to.have.property("Password");
+          expect(JSON.stringify(response.body)).not.to.contain(plainPassword);
           captureEvidence("04-CP-INT-004-consultar-usuario");
         });
       });

@@ -926,9 +926,12 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.contains("Mínimo 12 caracteres").should("be.visible");
       shot("C14-usuarios-formulario");
       cy.get('[data-cy="user-submit"]').click();
-      ["Identification number is required", "Username is required", "Enter a valid email", "Password is required", "Role is required"].forEach((m) =>
+      // Desde el incremento 3 las validaciones están en español y el rol es opcional
+      // (solo se ofrece con rbac/manage y roles que la sesión puede otorgar).
+      ["La identificación es obligatoria.", "El nombre de usuario es obligatorio.", "El correo es obligatorio.", "La contraseña es obligatoria."].forEach((m) =>
         cy.contains(m).should("be.visible")
       );
+      cy.contains("Role is required").should("not.exist");
       shot("C15-usuarios-validaciones");
     });
 
@@ -1030,7 +1033,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       shot("C28-sin-permiso-usuarios");
     });
 
-    it("3.7 usuario sin roles: acceso denegado sin quedar atrapado", () => {
+    it("3.7 usuario sin roles: inicia sesión y ve 'sin acceso a módulos', sin quedar atrapado", () => {
       const email = uniqueEmail("ga10-sin-rol");
       loginAsAdmin().then((session) => {
         createUser(AUTH(), session.access_token, idempotencyKey(), {
@@ -1042,14 +1045,21 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         }).its("status").should("eq", 201);
       });
       uiLogin(email, PASSWORD);
+      // Desde el incremento 3: credenciales y empresa válidas → la sesión se abre y se
+      // muestra un estado claro (no se confunde con credenciales incorrectas).
+      cy.location("pathname").should("eq", "/sin-acceso");
+      cy.get('[data-cy="no-access"]').should("contain.text", "Sin acceso a módulos");
       toasts().then((t) => {
         rec("usuarios.sin_rol.toasts", t);
-        expect(t.join(" ")).to.contain("Tu usuario no tiene permisos asignados para ingresar.");
-        expect(t.join(" ")).not.to.contain("Inicio de sesión exitoso");
+        expect(t.join(" ")).not.to.contain("Credenciales incorrectas");
       });
+      shot("C18-usuario-sin-permisos");
+      // Sin bucles: volver al inicio regresa a la misma pantalla, y se puede salir.
+      cy.visit("/");
+      cy.location("pathname").should("eq", "/sin-acceso");
+      cy.get('[data-cy="no-access-logout"]').click();
       cy.location("pathname").should("eq", "/login");
       cy.get("#email").should("be.visible");
-      shot("C18-usuario-sin-permisos");
     });
   });
 
