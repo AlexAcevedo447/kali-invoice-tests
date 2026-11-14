@@ -67,6 +67,17 @@ const expectViewMatchesServer = (inv: ServerInvoice) => {
   cy.get('[data-cy="invoice-view-subtotal"]').invoke("attr", "data-value").then(Number).should("eq", inv.Subtotal);
   cy.get('[data-cy="invoice-view-tax-total"]').invoke("attr", "data-value").then(Number).should("eq", inv.TaxTotal);
   cy.get('[data-cy="invoice-view-total"]').invoke("attr", "data-value").then(Number).should("eq", inv.Total);
+  // D4-04: el TEXTO mostrado tampoco se redondea (solo se completan ceros hasta 2 decimales).
+  const shownNumber = (text: string) => Number(text.replace(/[−$\s-]/g, ""));
+  (
+    [
+      ["invoice-view-subtotal", inv.Subtotal],
+      ["invoice-view-tax-total", inv.TaxTotal],
+      ["invoice-view-total", inv.Total],
+    ] as const
+  ).forEach(([cyName, value]) =>
+    cy.get(`[data-cy="${cyName}"]`).invoke("text").then((t) => expect(shownNumber(t), `${cyName} mostrado sin redondeo`).to.eq(Math.abs(value)))
+  );
   const amounts = inv.Items.flatMap((i) => (i.Taxes ?? []).map((t) => t.Amount)).sort();
   if (amounts.length === 0) {
     cy.get('[data-cy="invoice-view-tax-amount"]').should("not.exist");
@@ -74,6 +85,8 @@ const expectViewMatchesServer = (inv: ServerInvoice) => {
     cy.get('[data-cy="invoice-view-tax-amount"]').should("have.length", amounts.length).then(($a) => {
       const shown = [...$a].map((el) => Number(el.getAttribute("data-value"))).sort();
       expect(shown).to.deep.eq(amounts);
+      const texts = [...$a].map((el) => shownNumber(el.textContent ?? "")).sort();
+      expect(texts, "importes de impuestos mostrados sin redondeo").to.deep.eq(amounts);
     });
   }
   const noTaxLines = inv.Items.filter((i) => (i.Taxes ?? []).length === 0).length;

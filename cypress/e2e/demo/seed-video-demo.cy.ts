@@ -227,7 +227,61 @@ const applyAction = (token: string, invoiceId: string, action: "pay" | "cancel")
     .its("status")
     .should("eq", 200);
 
+/**
+ * Datos de los pasos 4 y 10 del guion (Guion_video.md): una segunda empresa,
+ * un correo con la misma contraseña en dos empresas (login con código de
+ * empresa) y un usuario sin roles ("Sin acceso a módulos"). Credenciales
+ * ficticias, solo para el entorno local.
+ */
+const NORTE_TENANT = { name: "Empresa Norte", code: "norte" };
+const SHARED_USER = { username: "contador", email: "contador@local.dev", password: "Contador#Local2026" };
+const NO_ROLE_USER = { username: "sin.permisos", email: "sin.permisos@local.dev", password: "SinPermisos#Local2026" };
+
+const ensureTenant = (ptoken: string, wanted: { name: string; code: string }): Cypress.Chainable<TenantResponse> =>
+  get<TenantResponse[]>(ptoken, `${AUTH()}/api/v1/tenants/`).then((list) => {
+    expect(list.status, "listar empresas").to.eq(200);
+    const found = list.body.find((t) => t.Code === wanted.code);
+    if (found) return cy.wrap(found);
+    return createTenant(AUTH(), ptoken, wanted).then((created) => {
+      expect(created.status, `empresa ${wanted.code} creada`).to.eq(201);
+      return created.body;
+    });
+  });
+
+/** Crea el usuario si falta; si ya existe (409) no lo modifica. */
+const ensureUser = (ptoken: string, tenantId: string, user: typeof SHARED_USER) =>
+  createUser(AUTH(), ptoken, idempotencyKey(), {
+    tenant_id: tenantId,
+    identification_number: uniqueIdentificationNumber(),
+    username: user.username,
+    email: user.email,
+    password: user.password,
+  }).then((r) => expect([201, 409], `usuario ${user.email}`).to.include(r.status));
+
 describe("Semilla de datos para el video (empresa demo)", () => {
+  it("deja los usuarios y la segunda empresa del guion (pasos 4 y 10, repetible)", () => {
+    loginAsAdmin().then((platform) => {
+      const ptoken = platform.access_token;
+      ensureTenant(ptoken, DEMO_TENANT).then((demo) =>
+        ensureTenant(ptoken, NORTE_TENANT).then((norte) => {
+          ensureUser(ptoken, demo.Id, SHARED_USER);
+          ensureUser(ptoken, norte.Id, SHARED_USER);
+          ensureUser(ptoken, demo.Id, NO_ROLE_USER);
+        })
+      );
+    });
+    // Estado final verificable (si un usuario ya existía con otra contraseña, falla aquí).
+    login(AUTH(), { email: SHARED_USER.email, password: SHARED_USER.password }).then((r) =>
+      expect(r.status, "mismo correo en dos empresas: pide código de empresa").to.eq(409)
+    );
+    login(AUTH(), { email: SHARED_USER.email, password: SHARED_USER.password, tenant_code: NORTE_TENANT.code }).then((r) =>
+      expect(r.status, "ingreso con el código norte").to.eq(200)
+    );
+    login(AUTH(), { email: NO_ROLE_USER.email, password: NO_ROLE_USER.password }).then((r) =>
+      expect(r.status, "usuario sin roles inicia sesión").to.eq(200)
+    );
+  });
+
   it("deja la empresa demo con su catálogo y las cinco facturas del guion (repetible)", () => {
     const email = Cypress.env("DEMO_ADMIN_EMAIL");
     const password = Cypress.env("DEMO_ADMIN_PASSWORD");
