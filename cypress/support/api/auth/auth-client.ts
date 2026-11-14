@@ -30,6 +30,8 @@ export interface LoginResponse {
   needs_rehash: boolean;
   roles: string[];
   permissions: Array<Record<string, string>>;
+  /** true solo para la empresa de plataforma (la que administra empresas). */
+  is_platform_tenant?: boolean;
 }
 
 export function login(

@@ -15,12 +15,13 @@ const AUTH_STORAGE_KEY = "auth-session-store";
  * en cada spec.
  */
 export function loginToUI(): void {
-  const tenantId = Cypress.env("AUTH_TENANT_ID");
-  const email = Cypress.env("AUTH_ADMIN_EMAIL");
-  const password = Cypress.env("AUTH_ADMIN_PASSWORD");
+  loginToUIAs(Cypress.env("AUTH_ADMIN_EMAIL"), Cypress.env("AUTH_ADMIN_PASSWORD"));
+}
 
+/** Igual que loginToUI, pero con cualquier usuario (p. ej. el admin de otra empresa). */
+export function loginToUIAs(email: string, password: string): void {
   cy.session(
-    ["ui-session", tenantId, email],
+    ["ui-session", email],
     () => {
       cy.visit("/login");
 
@@ -40,6 +41,7 @@ export function loginToUI(): void {
                 accessToken: session.access_token,
                 tenantId: session.tenant_id,
                 tenantName: session.tenant_name,
+                isPlatformTenant: session.is_platform_tenant === true,
                 userId: session.user_id,
                 email: session.email,
                 roles: session.roles,
