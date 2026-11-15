@@ -20,6 +20,8 @@ const MSG = {
   commas: "Usa una sola coma decimal. No uses separadores de miles.",
   chars: "Escribe solo números y, si hace falta, una coma decimal.",
 };
+/** Tolerancia de redondeo subpíxel del motor de diseño (p. ej. Firefox: 768.00003 px). */
+const SUBPIXEL = 1;
 const money = (value: number) =>
   `$${new Intl.NumberFormat("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(value))}`;
 
@@ -175,9 +177,9 @@ describe("CP-E2E-012 - Entrada es-CO, formato monetario, diseño y contraseñas 
         noPageOverflow(`${label} ${path}`);
         cy.get('[data-cy="app-nav"] a').each(($a) => {
           const rect = $a[0].getBoundingClientRect();
-          expect(rect.right, `${label}: enlace "${$a.text()}" dentro de la pantalla`).to.be.at.most(w);
+          expect(rect.right, `${label}: enlace "${$a.text()}" dentro de la pantalla`).to.be.at.most(w + SUBPIXEL);
         });
-        cy.get('[data-cy="logout-button"]').then(($b) => expect($b[0].getBoundingClientRect().right).to.be.at.most(w));
+        cy.get('[data-cy="logout-button"]').then(($b) => expect($b[0].getBoundingClientRect().right).to.be.at.most(w + SUBPIXEL));
       });
       cy.visit("/invoicing/customers");
       cy.get('[data-cy="customer-search"]').type("CLIENTESINESPACIOS");
@@ -189,9 +191,9 @@ describe("CP-E2E-012 - Entrada es-CO, formato monetario, diseño y contraseñas 
       cy.get(".p-dropdown-panel .p-dropdown-filter").type("CLIENTESINESPACIOS", { force: true });
       cy.contains(".p-dropdown-panel .p-dropdown-item", "CLIENTESINESPACIOS").then(($item) => {
         const rect = $item[0].getBoundingClientRect();
-        expect(rect.right, `${label}: opción larga dentro de la pantalla`).to.be.at.most(w);
+        expect(rect.right, `${label}: opción larga dentro de la pantalla`).to.be.at.most(w + SUBPIXEL);
       });
-      cy.get(".p-dropdown-panel").then(($p) => expect($p[0].getBoundingClientRect().right, `${label}: panel del selector`).to.be.at.most(w));
+      cy.get(".p-dropdown-panel").then(($p) => expect($p[0].getBoundingClientRect().right, `${label}: panel del selector`).to.be.at.most(w + SUBPIXEL));
       noPageOverflow(`${label} formulario de factura`);
       cy.get("body").type("{esc}");
     });
