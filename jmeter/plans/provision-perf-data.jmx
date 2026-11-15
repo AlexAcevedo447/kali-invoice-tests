@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  InvoiceKali - aprovisionamiento idempotente de los datos exclusivos de performance.
+  Ejecuta scripts/provision.groovy (sin red al validar: threads=0). Ver scripts/run.sh provision.
+-->
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="InvoiceKali - datos de performance">
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="Variables">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Aprovisionamiento">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,1)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">0</stringProp>
+        <stringProp name="ThreadGroup.on_sample_error">stoptest</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Una vez">
+          <stringProp name="LoopController.loops">1</stringProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <JSR223Sampler guiclass="TestBeanGUI" testclass="JSR223Sampler" testname="Aprovisionar datos de performance">
+          <stringProp name="scriptLanguage">groovy</stringProp>
+          <stringProp name="parameters"></stringProp>
+          <stringProp name="filename">${__P(kali.root)}/scripts/provision.groovy</stringProp>
+          <stringProp name="cacheKey">true</stringProp>
+          <stringProp name="script"></stringProp>
+        </JSR223Sampler>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

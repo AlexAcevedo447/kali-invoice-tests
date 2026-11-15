@@ -1,0 +1,49 @@
+{
+  "name": "kali-invoice-tests",
+  "version": "1.0.0",
+  "description": "Pruebas de integración y extremo a extremo de InvoiceKali con Cypress (independiente de JMeter).",
+  "scripts": {
+    "cy:open": "cypress open",
+    "test": "cypress run",
+    "test:api:auth": "cypress run --spec 'e2e/api/auth/**/*.cy.ts'",
+    "test:api:invoice": "cypress run --spec 'e2e/api/invoice/**/*.cy.ts'",
+    "test:flows": "cypress run --spec 'e2e/flows/**/*.cy.ts'",
+    "invoice:test-db:up": "./scripts/invoice-test-db.sh up",
+    "invoice:test-db:down": "./scripts/invoice-test-db.sh down",
+    "test:auth": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"e2e/api/auth/**/*.cy.ts\" --browser electron",
+    "test:invoice": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"e2e/api/invoice/**/*.cy.ts\" --browser electron",
+    "test:ui": "env -u ELECTRON_RUN_AS_NODE npx cypress run --spec \"e2e/ui/**/*.cy.ts\" --browser electron",
+    "test:invoice:fresh": "./scripts/invoice-test-fresh.sh",
+    "test:all": "npm run test:auth && npm run test:invoice:fresh && npm run test:ui",
+    "test:auth:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"e2e/api/auth/**/*.cy.ts\" --browser electron",
+    "test:invoice:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"e2e/api/invoice/**/*.cy.ts\" --browser electron",
+    "test:ui:headed": "env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --spec \"e2e/ui/**/*.cy.ts\" --browser electron",
+    "test:invoice:fresh:headed": "./scripts/invoice-test-fresh.sh headed",
+    "test:all:headed": "npm run test:auth:headed && npm run test:invoice:fresh:headed && npm run test:ui:headed",
+    "test:invoice:prepare": "./scripts/invoice-test-fresh.sh prepare",
+    "evidence:clean": "rm -rf results/screenshots/GA9",
+    "test:ga9:open": "npm run evidence:clean && npm run test:invoice:prepare && env -u ELECTRON_RUN_AS_NODE npx cypress run --headed --no-exit --config \"watchForFileChanges=false,numTestsKeptInMemory=50\" --env GA9_EVIDENCE=true --browser electron --spec \"e2e/evidence/GA9-all-tests.cy.ts\"",
+    "typecheck": "tsc --noEmit -p .",
+    "test:docker": "docker compose run --rm cypress"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexAcevedo447/kali-invoice-tests.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AlexAcevedo447/kali-invoice-tests/issues"
+  },
+  "homepage": "https://github.com/AlexAcevedo447/kali-invoice-tests#readme",
+  "devDependencies": {
+    "cypress": "^15.21.0",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "cypress@15.21.0": true
+  },
+  "private": true
+}

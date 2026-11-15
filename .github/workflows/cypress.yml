@@ -1,0 +1,71 @@
+# Pipeline de Cypress (independiente de JMeter: no instala Java ni toca jmeter/).
+name: cypress
+
+on:
+  pull_request:
+    paths: ["cypress/**", ".github/workflows/cypress.yml"]
+  push:
+    branches: [main]
+    paths: ["cypress/**", ".github/workflows/cypress.yml"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente (Cypress no se ejecuta contra producción)"
+        type: choice
+        options: [test]
+        default: test
+      spec:
+        description: "Specs (patrón relativo a cypress/)"
+        default: "e2e/api/**/*.cy.ts"
+
+defaults:
+  run:
+    working-directory: cypress
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cypress/package-lock.json
+      - name: Dependencias (sin descargar el binario de Cypress)
+        run: npm ci
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+      - name: Tipos
+        run: npm run typecheck
+      - name: Imagen de tareas
+        run: docker build -t kali-tests-cypress:ci .
+
+  ejecutar:
+    # Solo manual y contra el ambiente de pruebas; credenciales desde secretos del ambiente.
+    if: github.event_name == 'workflow_dispatch'
+    needs: verificar
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configuración del ambiente (sin secretos)
+        run: echo '${{ vars.CYPRESS_ENVIRONMENT_JSON }}' > config/environments/${{ inputs.environment }}.json
+      - name: Ejecutar Cypress en contenedor de tarea
+        run: |
+          docker build -t kali-tests-cypress:ci .
+          docker run --rm \
+            -e KALI_TEST_ENV=${{ inputs.environment }} \
+            -e CYPRESS_AUTH_ADMIN_PASSWORD \
+            -e CYPRESS_DEMO_ADMIN_PASSWORD \
+            -v "$PWD/config/environments:/tests/config/environments:ro" \
+            -v "$PWD/results:/tests/results" \
+            kali-tests-cypress:ci --spec "${{ inputs.spec }}"
+        env:
+          CYPRESS_AUTH_ADMIN_PASSWORD: ${{ secrets.KALI_AUTH_ADMIN_PASSWORD }}
+          CYPRESS_DEMO_ADMIN_PASSWORD: ${{ secrets.KALI_DEMO_ADMIN_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cypress-results
+          path: cypress/results

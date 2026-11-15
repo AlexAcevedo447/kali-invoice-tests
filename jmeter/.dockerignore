@@ -1,0 +1,8 @@
+# Nunca entran en la imagen: resultados, ambientes reales copiados ni secretos.
+results
+config/environments/test.properties
+config/environments/production.properties
+.env
+.env.*
+*.log
+.DS_Store

@@ -1,0 +1,70 @@
+# Pipeline de JMeter (independiente de Cypress: no instala Node ni toca cypress/).
+name: jmeter
+
+on:
+  pull_request:
+    paths: ["jmeter/**", ".github/workflows/jmeter.yml"]
+  push:
+    branches: [main]
+    paths: ["jmeter/**", ".github/workflows/jmeter.yml"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente (producción no está disponible en el pipeline)"
+        type: choice
+        options: [test]
+        default: test
+      command:
+        description: "smoke = ejecución mínima; load = smoke obligatorio y luego carga"
+        type: choice
+        options: [smoke, load]
+        default: smoke
+
+defaults:
+  run:
+    working-directory: jmeter
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Imagen de tareas
+        run: docker build -t kali-tests-jmeter:ci .
+      - name: Validar planes (sin red, sin usuarios)
+        run: docker run --rm kali-tests-jmeter:ci validate
+      - name: Producción bloqueada por defecto
+        run: |
+          cp config/environments/production.properties.example /tmp/production.properties
+          set +e
+          docker run --rm -e KALI_PERF_USER_PASSWORD=x \
+            -v /tmp/production.properties:/perf/config/environments/production.properties:ro \
+            kali-tests-jmeter:ci smoke --env production
+          code=$?
+          test "$code" -eq 3
+
+  ejecutar:
+    if: github.event_name == 'workflow_dispatch'
+    needs: validar
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configuración del ambiente (sin secretos)
+        run: echo '${{ vars.JMETER_ENVIRONMENT_PROPERTIES }}' > config/environments/${{ inputs.environment }}.properties
+      - name: Ejecutar JMeter en contenedor de tarea
+        run: |
+          docker build -t kali-tests-jmeter:ci .
+          # Mismo usuario que el runner para poder escribir en results/ montado.
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -e KALI_PERF_USER_PASSWORD \
+            -v "$PWD/config/environments:/perf/config/environments:ro" \
+            -v "$PWD/results:/perf/results" \
+            kali-tests-jmeter:ci ${{ inputs.command }} --env ${{ inputs.environment }}
+        env:
+          KALI_PERF_USER_PASSWORD: ${{ secrets.KALI_PERF_USER_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jmeter-results
+          path: jmeter/results

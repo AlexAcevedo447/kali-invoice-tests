@@ -1,0 +1,22 @@
+# Contenedor de TAREA (se ejecuta y termina; no es un servicio permanente).
+# No forma parte del despliegue de producción de Kali y no depende de Cypress.
+# Las contraseñas se pasan desde el entorno del host en tiempo de ejecución:
+#   export KALI_PERF_USER_PASSWORD=...        (smoke / load / provision)
+#   export KALI_PLATFORM_ADMIN_PASSWORD=...   (solo provision)
+#   docker compose run --rm jmeter smoke
+name: kali-tests-jmeter
+
+services:
+  jmeter:
+    build: .
+    image: kali-tests-jmeter:5.6.3
+    restart: "no"
+    environment:
+      KALI_PERF_ENV: ${KALI_PERF_ENV:-local-docker}
+      KALI_PERF_USER_PASSWORD: ${KALI_PERF_USER_PASSWORD:-}
+      KALI_PLATFORM_ADMIN_PASSWORD: ${KALI_PLATFORM_ADMIN_PASSWORD:-}
+      KALI_ALLOW_PRODUCTION_LOAD: ${KALI_ALLOW_PRODUCTION_LOAD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./results:/perf/results

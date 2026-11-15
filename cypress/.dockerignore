@@ -1,0 +1,11 @@
+# Nunca entran en la imagen: dependencias locales, resultados ni secretos.
+node_modules
+results
+screenshots
+videos
+downloads
+cypress.env.json
+.env
+.env.*
+*.log
+.DS_Store

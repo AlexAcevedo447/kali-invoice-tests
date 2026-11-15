@@ -25,7 +25,8 @@
 #
 # Variable opcional:
 #   INVOICE_SERVICE_DIR  ruta al repo de kali-invoice-service
-#                        (default: repo hermano ../kali-invoice-service)
+#                        (default: repo hermano de kali-invoice-tests, es decir
+#                        ../../kali-invoice-service desde la carpeta cypress/)
 
 set -eu
 
@@ -42,8 +43,9 @@ case "${1:-}" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Raíz de la herramienta Cypress (kali-invoice-tests/cypress), donde está package.json.
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-INVOICE_SERVICE_DIR="${INVOICE_SERVICE_DIR:-$REPO_ROOT/../kali-invoice-service}"
+INVOICE_SERVICE_DIR="${INVOICE_SERVICE_DIR:-$REPO_ROOT/../../kali-invoice-service}"
 INVOICE_REPO_MARKER="kali-invoice-service"
 APP_PORT=8080
 LOG_FILE="/tmp/kali-invoice-service-cypress.log"

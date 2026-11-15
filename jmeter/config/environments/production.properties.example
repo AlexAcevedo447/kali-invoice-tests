@@ -1,0 +1,19 @@
+# PRODUCCIÓN: bloqueado por defecto. run.sh aborta (código 3) salvo que se exporte
+#   KALI_ALLOW_PRODUCTION_LOAD=SI-AUTORIZO-CARGA-EN-PRODUCCION
+# Copiar a production.properties (ignorado por git) solo con autorización explícita.
+kali.environment.name=production
+kali.environment.kind=production
+auth.protocol=https
+auth.host=<host-auth-produccion>
+auth.port=443
+invoice.protocol=https
+invoice.host=<host-facturacion-produccion>
+invoice.port=443
+perf.tenant.code=perf
+perf.tenant.name=Kali Performance
+perf.user.email=<correo-del-usuario-de-performance>
+perf.customer.document=PERF-CLIENTE-001
+perf.customer.name=Cliente Performance
+perf.product.code=PERF-PROD-001
+perf.product.name=Producto Performance
+platform.admin.email=<correo-del-administrador-de-plataforma>

@@ -1,0 +1,17 @@
+# Plantilla para un ambiente compartido de PRUEBAS. Copiar a test.properties (ignorado por git) y completar.
+kali.environment.name=test
+kali.environment.kind=test
+auth.protocol=https
+auth.host=auth.pruebas.example.invalid
+auth.port=443
+invoice.protocol=https
+invoice.host=facturacion.pruebas.example.invalid
+invoice.port=443
+perf.tenant.code=perf
+perf.tenant.name=Kali Performance
+perf.user.email=perf.load@kali.local
+perf.customer.document=PERF-CLIENTE-001
+perf.customer.name=Cliente Performance
+perf.product.code=PERF-PROD-001
+perf.product.name=Producto Performance
+platform.admin.email=<correo-del-administrador-de-plataforma-de-pruebas>

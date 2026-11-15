@@ -20,9 +20,9 @@ import {
  * GA10-220501097-AA11-EV01 — Validación funcional para el manual de usuario.
  *
  * Verifica (con aserciones) el comportamiento visible ya corregido y, además,
- * registra requests/respuestas/textos en cypress/results/GA10-observaciones.json
+ * registra requests/respuestas/textos en results/GA10-observaciones.json
  * y toma capturas para el manual en
- * cypress/screenshots/GA10-validacion-manual.cy.ts/GA10/.
+ * results/screenshots/GA10-validacion-manual.cy.ts/GA10/.
  *
  * cy.intercept se usa como espía salvo en dos casos marcados como SIMULADOS:
  * la lista vacía y el fallo de backend al editar (no hay forma de provocarlos
@@ -223,7 +223,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
   });
 
   after(() => {
-    cy.writeFile("cypress/results/GA10-observaciones.json", obs);
+    cy.writeFile("results/GA10-observaciones.json", obs);
   });
 
   // ------------------------------------------------------------------ 1. LOGIN

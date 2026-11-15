@@ -1,0 +1,8 @@
+{
+  "AUTH_API_URL": "https://auth.pruebas.example.invalid",
+  "INVOICE_API_URL": "https://facturacion.pruebas.example.invalid",
+  "FRONT_URL": "https://app.pruebas.example.invalid",
+  "AUTH_TENANT_ID": "<id-de-la-empresa-de-plataforma-de-pruebas>",
+  "AUTH_ADMIN_EMAIL": "<correo-del-administrador-de-pruebas>",
+  "DEMO_ADMIN_EMAIL": "<correo-del-administrador-demo-de-pruebas>"
+}

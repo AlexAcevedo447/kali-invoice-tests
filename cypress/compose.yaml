@@ -1,0 +1,20 @@
+# Contenedor de TAREA (se ejecuta y termina; no es un servicio permanente).
+# No forma parte del despliegue de producción de Kali y no depende de JMeter.
+# Las contraseñas se pasan desde el entorno del host en tiempo de ejecución:
+#   export KALI_AUTH_ADMIN_PASSWORD=...   (y KALI_DEMO_ADMIN_PASSWORD para la semilla demo)
+#   docker compose run --rm cypress --spec "e2e/api/**/*.cy.ts"
+name: kali-tests-cypress
+
+services:
+  cypress:
+    build: .
+    image: kali-tests-cypress:15.21.0
+    restart: "no"
+    environment:
+      KALI_TEST_ENV: ${KALI_TEST_ENV:-local-docker}
+      CYPRESS_AUTH_ADMIN_PASSWORD: ${KALI_AUTH_ADMIN_PASSWORD:-}
+      CYPRESS_DEMO_ADMIN_PASSWORD: ${KALI_DEMO_ADMIN_PASSWORD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./results:/tests/results

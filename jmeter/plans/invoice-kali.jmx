@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  InvoiceKali - plan de rendimiento: login, consulta y creación de facturas.
+  Opera solo sobre los datos de performance (empresa perf.tenant.code, usuario
+  perf.user.email, cliente perf.customer.document, producto perf.product.code).
+  Hosts, puertos y volumen llegan como propiedades (config/environments y
+  config/profiles). La contraseña del usuario se lee en tiempo de ejecución de la
+  variable de entorno KALI_PERF_USER_PASSWORD: no está en el plan, en la imagen
+  ni en los resultados. Ejecutar con scripts/run.sh.
+-->
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="InvoiceKali - login, consulta y creación de facturas">
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="Variables">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Usuarios de facturación (performance)">
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,1)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">${__P(rampup,1)}</stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <boolProp name="ThreadGroup.scheduler">false</boolProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Iteraciones">
+          <stringProp name="LoopController.loops">${__P(loops,1)}</stringProp>
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+        </elementProp>
+      </ThreadGroup>
+      <hashTree>
+        <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Contenido JSON">
+          <collectionProp name="HeaderManager.headers">
+            <elementProp name="" elementType="Header">
+              <stringProp name="Header.name">Content-Type</stringProp>
+              <stringProp name="Header.value">application/json</stringProp>
+            </elementProp>
+          </collectionProp>
+        </HeaderManager>
+        <hashTree/>
+        <OnceOnlyController guiclass="OnceOnlyControllerGui" testclass="OnceOnlyController" testname="Sesión y datos de performance (una vez por usuario)"/>
+        <hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="01 Login">
+            <stringProp name="HTTPSampler.protocol">${__P(auth.protocol,http)}</stringProp>
+            <stringProp name="HTTPSampler.domain">${__P(auth.host)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(auth.port)}</stringProp>
+            <stringProp name="HTTPSampler.path">/api/v1/auth/login</stringProp>
+            <stringProp name="HTTPSampler.method">POST</stringProp>
+            <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments">
+                <elementProp name="" elementType="HTTPArgument">
+                  <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                  <stringProp name="Argument.value">{"email":"${__P(perf.user.email)}","password":${__groovy(groovy.json.JsonOutput.toJson(System.getenv('KALI_PERF_USER_PASSWORD') ?: ''),)}}</stringProp>
+                  <stringProp name="Argument.metadata">=</stringProp>
+                </elementProp>
+              </collectionProp>
+            </elementProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="HTTP 200">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="49586">200</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.custom_message">El login del usuario de performance debe responder 200</stringProp>
+              <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">8</intProp>
+            </ResponseAssertion>
+            <hashTree/>
+            <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="Token">
+              <stringProp name="JSONPostProcessor.referenceNames">token</stringProp>
+              <stringProp name="JSONPostProcessor.jsonPathExprs">$.access_token</stringProp>
+              <stringProp name="JSONPostProcessor.match_numbers">1</stringProp>
+              <stringProp name="JSONPostProcessor.defaultValues">SIN_TOKEN</stringProp>
+            </JSONPostProcessor>
+            <hashTree/>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="02 Cliente de performance">
+            <stringProp name="HTTPSampler.protocol">${__P(invoice.protocol,http)}</stringProp>
+            <stringProp name="HTTPSampler.domain">${__P(invoice.host)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(invoice.port)}</stringProp>
+            <stringProp name="HTTPSampler.path">/api/v1/customers?search=${__P(perf.customer.document)}&amp;page=1&amp;page_size=10</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments"/>
+            </elementProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Autorización">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree/>
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Cliente de performance presente">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="1">${__P(perf.customer.document)}</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.custom_message">Falta el cliente de performance: ejecutar run.sh provision</stringProp>
+              <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">16</intProp>
+            </ResponseAssertion>
+            <hashTree/>
+            <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="customerId">
+              <stringProp name="JSONPostProcessor.referenceNames">customerId</stringProp>
+              <stringProp name="JSONPostProcessor.jsonPathExprs">$[?(@.Document == '${__P(perf.customer.document)}')].ID</stringProp>
+              <stringProp name="JSONPostProcessor.match_numbers">1</stringProp>
+              <stringProp name="JSONPostProcessor.defaultValues">SIN_CLIENTE</stringProp>
+            </JSONPostProcessor>
+            <hashTree/>
+          </hashTree>
+          <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="03 Producto de performance">
+            <stringProp name="HTTPSampler.protocol">${__P(invoice.protocol,http)}</stringProp>
+            <stringProp name="HTTPSampler.domain">${__P(invoice.host)}</stringProp>
+            <stringProp name="HTTPSampler.port">${__P(invoice.port)}</stringProp>
+            <stringProp name="HTTPSampler.path">/api/v1/products?search=${__P(perf.product.code)}&amp;page=1&amp;page_size=10</stringProp>
+            <stringProp name="HTTPSampler.method">GET</stringProp>
+            <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+            <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+            <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+              <collectionProp name="Arguments.arguments"/>
+            </elementProp>
+          </HTTPSamplerProxy>
+          <hashTree>
+            <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Autorización">
+              <collectionProp name="HeaderManager.headers">
+                <elementProp name="" elementType="Header">
+                  <stringProp name="Header.name">Authorization</stringProp>
+                  <stringProp name="Header.value">Bearer ${token}</stringProp>
+                </elementProp>
+              </collectionProp>
+            </HeaderManager>
+            <hashTree/>
+            <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Producto de performance presente">
+              <collectionProp name="Asserion.test_strings">
+                <stringProp name="1">${__P(perf.product.code)}</stringProp>
+              </collectionProp>
+              <stringProp name="Assertion.custom_message">Falta el producto de performance: ejecutar run.sh provision</stringProp>
+              <stringProp name="Assertion.test_field">Assertion.response_data</stringProp>
+              <boolProp name="Assertion.assume_success">false</boolProp>
+              <intProp name="Assertion.test_type">16</intProp>
+            </ResponseAssertion>
+            <hashTree/>
+            <JSONPostProcessor guiclass="JSONPostProcessorGui" testclass="JSONPostProcessor" testname="productId">
+              <stringProp name="JSONPostProcessor.referenceNames">productId</stringProp>
+              <stringProp name="JSONPostProcessor.jsonPathExprs">$[?(@.Code == '${__P(perf.product.code)}')].ID</stringProp>
+              <stringProp name="JSONPostProcessor.match_numbers">1</stringProp>
+              <stringProp name="JSONPostProcessor.defaultValues">SIN_PRODUCTO</stringProp>
+            </JSONPostProcessor>
+            <hashTree/>
+          </hashTree>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="04 Consultar facturas">
+          <stringProp name="HTTPSampler.protocol">${__P(invoice.protocol,http)}</stringProp>
+          <stringProp name="HTTPSampler.domain">${__P(invoice.host)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(invoice.port)}</stringProp>
+          <stringProp name="HTTPSampler.path">/api/v1/invoices?page=1&amp;page_size=20</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Autorización">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">Bearer ${token}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="HTTP 200">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="49586">200</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message">La consulta de facturas debe responder 200</stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">8</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="05 Crear factura">
+          <stringProp name="HTTPSampler.protocol">${__P(invoice.protocol,http)}</stringProp>
+          <stringProp name="HTTPSampler.domain">${__P(invoice.host)}</stringProp>
+          <stringProp name="HTTPSampler.port">${__P(invoice.port)}</stringProp>
+          <stringProp name="HTTPSampler.path">/api/v1/invoices</stringProp>
+          <stringProp name="HTTPSampler.method">POST</stringProp>
+          <stringProp name="HTTPSampler.contentEncoding">UTF-8</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
+            <collectionProp name="Arguments.arguments">
+              <elementProp name="" elementType="HTTPArgument">
+                <boolProp name="HTTPArgument.always_encode">false</boolProp>
+                <stringProp name="Argument.value">{"customer_id":"${customerId}","items":[{"item_id":"${productId}","quantity":1,"unit_price":100,"taxes":[{"code":"IVA","kind":"DEBIT","rate":0.19}]}]}</stringProp>
+                <stringProp name="Argument.metadata">=</stringProp>
+              </elementProp>
+            </collectionProp>
+          </elementProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Autorización e idempotencia">
+            <collectionProp name="HeaderManager.headers">
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Authorization</stringProp>
+                <stringProp name="Header.value">Bearer ${token}</stringProp>
+              </elementProp>
+              <elementProp name="" elementType="Header">
+                <stringProp name="Header.name">Idempotency-Key</stringProp>
+                <stringProp name="Header.value">${__UUID()}</stringProp>
+              </elementProp>
+            </collectionProp>
+          </HeaderManager>
+          <hashTree/>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="HTTP 201">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="49587">201</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.custom_message">La creación de la factura debe responder 201</stringProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">8</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+      </hashTree>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>

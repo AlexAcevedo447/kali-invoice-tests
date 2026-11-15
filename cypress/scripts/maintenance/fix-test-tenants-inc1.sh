@@ -7,7 +7,7 @@
 #   fba1f76e-…  nombre "   "  código 000     -> nombre/código de prueba explícitos
 #   56a9f9f0-…  "Duplicada…"  código master  -> libera "master" (confusión con la plataforma)
 #
-# Uso (desde kali-invoice-tests, con cypress.env.json del entorno de desarrollo):
+# Uso (desde kali-invoice-tests/cypress, con cypress.env.json del entorno de desarrollo):
 #   sh scripts/maintenance/fix-test-tenants-inc1.sh            # simulación (no cambia nada)
 #   sh scripts/maintenance/fix-test-tenants-inc1.sh --apply    # aplica con PUT /api/v1/tenants/:id
 #

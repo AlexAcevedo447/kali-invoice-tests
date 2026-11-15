@@ -1,11 +1,22 @@
-node_modules/
-cypress/screenshots/
-cypress/videos/
-cypress/downloads/
-cypress.env.json
+# --- Generales ---
+.DS_Store
 .env
 .env.*
 !.env.example
+*.log
 
-.DS_Store
+# --- Cypress (carpeta cypress/) ---
+cypress/node_modules/
 cypress/results/
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+# Secretos locales (contraseñas); usar cypress.env.example.json como plantilla.
+cypress/cypress.env.json
+
+# --- JMeter (carpeta jmeter/) ---
+jmeter/results/*
+!jmeter/results/.gitkeep
+# Ambientes reales copiados desde las plantillas *.example (pueden tener hosts internos).
+jmeter/config/environments/test.properties
+jmeter/config/environments/production.properties

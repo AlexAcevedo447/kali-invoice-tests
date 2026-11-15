@@ -4,8 +4,11 @@
  * creación de roles/permisos que devuelve la entidad creada (PascalCase).
  */
 
+import { idempotencyKey } from "../../data/unique";
+
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
-const idem = () => crypto.randomUUID();
+// Mismo generador que el resto de las pruebas (funciona también fuera de contextos seguros).
+const idem = () => idempotencyKey();
 
 export interface PermissionResponse {
   Id: string;

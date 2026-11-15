@@ -9,5 +9,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["cypress/**/*.ts"]
+  "include": ["e2e/**/*.ts", "support/**/*.ts"],
+  "exclude": ["node_modules", "results"]
 }

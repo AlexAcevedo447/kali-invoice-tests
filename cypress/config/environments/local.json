@@ -4,7 +4,5 @@
   "FRONT_URL": "http://localhost:15173",
   "AUTH_TENANT_ID": "master-tenant",
   "AUTH_ADMIN_EMAIL": "master@local.dev",
-  "AUTH_ADMIN_PASSWORD": "Kali#Local2026",
-  "DEMO_ADMIN_EMAIL": "admin.demo@local.dev",
-  "DEMO_ADMIN_PASSWORD": "Demo#Local2026"
+  "DEMO_ADMIN_EMAIL": "admin.demo@local.dev"
 }
