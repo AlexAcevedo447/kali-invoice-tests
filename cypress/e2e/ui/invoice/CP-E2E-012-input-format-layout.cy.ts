@@ -136,6 +136,11 @@ describe("CP-E2E-012 - Entrada es-CO, formato monetario, diseño y contraseñas 
       const row = () => cy.contains(ROWS, `FAC-${inv.ID.slice(0, 8).toUpperCase()}`);
       // Monto: valor exacto del servidor en data-value; texto con formato visual es-CO de 2 decimales.
       row().find('[data-cy="invoice-row-amount"]').should("have.attr", "data-value", String(inv.Total)).and("have.text", money(inv.Total));
+      // Vista de solo lectura: cantidad y tarifa también con coma decimal.
+      row().find('[data-cy="invoice-view"]').click();
+      cy.get('[data-cy="invoice-view-line-quantity"]').should("have.text", "1,5");
+      cy.get('[data-cy="invoice-view-tax-rate"]').should("contain.text", "19,5 %");
+      cy.get("body").type("{esc}");
       row().find('button[title="Editar"]').click();
       cy.get('[id="items.0.quantity"]').should("have.value", "1,5");
       cy.get('[id="items.0.unitPrice"]').should("have.value", "100,25");
@@ -196,6 +201,41 @@ describe("CP-E2E-012 - Entrada es-CO, formato monetario, diseño y contraseñas 
       cy.get(".p-dropdown-panel").then(($p) => expect($p[0].getBoundingClientRect().right, `${label}: panel del selector`).to.be.at.most(w + SUBPIXEL));
       noPageOverflow(`${label} formulario de factura`);
       cy.get("body").type("{esc}");
+    });
+  });
+
+  it("importes y estados del listado no se parten en varias líneas (1000, 768 y 390 px)", () => {
+    /** Número de líneas que ocupa el texto del elemento (por posición vertical de sus fragmentos). */
+    const lines = (el: HTMLElement) => {
+      // Solo los nodos de texto (no las cajas de los elementos que los envuelven).
+      const doc = el.ownerDocument;
+      const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const tops: number[] = [];
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.textContent?.trim()) continue;
+        const range = doc.createRange();
+        range.selectNodeContents(node);
+        [...range.getClientRects()].forEach((r) => {
+          if (!tops.some((t) => Math.abs(t - r.top) <= 2)) tops.push(r.top);
+        });
+      }
+      return tops.length;
+    };
+    ([
+      [1000, 660],
+      [768, 1024],
+      [390, 844],
+    ] as const).forEach(([w, h]) => {
+      cy.viewport(w, h);
+      loginToUIAs(admin, PASSWORD);
+      cy.visit("/invoicing/invoices");
+      cy.get('[data-cy="invoice-row-amount"]').should("have.length.greaterThan", 0).each(($a) => {
+        expect(lines($a[0]), `${w}px: importe "${$a.text()}" en una sola línea`).to.eq(1);
+      });
+      cy.get(`${ROWS} .p-tag`).each(($t) => {
+        expect(lines($t[0]), `${w}px: estado "${$t.text()}" en una sola línea`).to.eq(1);
+      });
+      noPageOverflow(`${w}px listado de facturas`);
     });
   });
 
