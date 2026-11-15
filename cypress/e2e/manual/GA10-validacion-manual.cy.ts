@@ -952,15 +952,16 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
 
     it("3.2 contraseña débil muestra la regla en español", () => {
       loginToUI();
-      cy.intercept("POST", "**/api/v1/users*").as("createUser");
+      cy.intercept("POST", "**/api/v1/users**").as("createUser");
       cy.visit("/admin/users");
       fillUserForm(uniqueEmail("ga10-debil"), "abc", "admin");
       cy.get('[data-cy="user-submit"]').click();
-      cy.wait("@createUser").its("response.statusCode").should("eq", 400);
-      toasts().then((t) => {
-        rec("usuarios.password_debil.toasts", t);
-        expect(t.join(" ")).to.contain("La contraseña debe tener al menos 12 caracteres.");
-      });
+      // La interfaz aplica la misma política que el servidor (12 caracteres Unicode y
+      // clases de caracteres) y muestra la regla en español sin enviar la petición;
+      // el rechazo del servidor (400) lo cubren CP-INT-013 y CP-INT-015.
+      cy.contains("La contraseña debe tener al menos 12 caracteres.").should("be.visible");
+      cy.get("@createUser.all").should("have.length", 0);
+      rec("usuarios.password_debil.mensaje", "La contraseña debe tener al menos 12 caracteres.");
       shot("C23-usuarios-error-password");
     });
 
