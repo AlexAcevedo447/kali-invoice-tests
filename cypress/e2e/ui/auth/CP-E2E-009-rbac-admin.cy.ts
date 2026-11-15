@@ -20,6 +20,30 @@ const selectByText = (cy_: string, text: string) =>
     .contains(text)
     .then((option) => cy.get(`[data-cy="${cy_}"]`).select(String(option.val())));
 
+/**
+ * Intercepta una petición y mide en el navegador cuánto tarda su respuesta (ms), para
+ * distinguir una demora real del servicio de un problema de sincronización de la prueba.
+ */
+const timedIntercept = (method: string, url: string, alias: string) => {
+  const timing: { ms?: number; status?: number } = {};
+  cy.intercept({ method, url }, (req) => {
+    const start = Date.now();
+    req.continue((res) => {
+      timing.ms = Date.now() - start;
+      timing.status = res.statusCode;
+    });
+  }).as(alias);
+  return timing;
+};
+
+/** Deja las duraciones en el registro de Cypress y en results/timings/CP-E2E-009.jsonl. */
+const recordTimings = (timings: Record<string, { ms?: number; status?: number }>) =>
+  cy.then(() => {
+    Object.entries(timings).forEach(([name, t]) => cy.log(`${name}: HTTP ${t.status} en ${t.ms} ms`));
+    const line = JSON.stringify({ at: new Date().toISOString(), test: "CP-E2E-009 permisos del rol", ...timings });
+    cy.writeFile("results/timings/CP-E2E-009.jsonl", `${line}\n`, { flag: "a+" });
+  });
+
 describe("CP-E2E-009 - Roles y permisos (UI)", () => {
   const admin = uniqueEmail("cp-e2e-009-admin");
   const viewer = uniqueEmail("cp-e2e-009-lector");
@@ -98,14 +122,30 @@ describe("CP-E2E-009 - Roles y permisos (UI)", () => {
     toast("Ya existe un rol con ese nombre");
 
     // Permisos del rol: agregar y quitar (users/read existe en la empresa).
+    // Sincronización por red, no por tiempo: cada acción espera la respuesta exacta de su
+    // petición y la recarga de permisos del rol que la interfaz hace después. Los intercepts
+    // se registran antes de abrir el diálogo para no confundir la carga inicial con la recarga.
+    const assignTiming = timedIntercept("POST", "**/api/v1/rbac/roles/permissions/assign", "assignRolePermission");
+    const removeTiming = timedIntercept("POST", "**/api/v1/rbac/roles/permissions/remove", "removeRolePermission");
+    cy.intercept("GET", "**/api/v1/rbac/roles/permissions?*").as("rolePermissions");
     cy.get('[data-cy="roles-search"]').type(name);
     cy.contains('[data-cy="roles-table"] tr', name).find('[data-cy="role-permissions"]').click();
+    cy.wait("@rolePermissions");
     cy.get('[data-cy="role-permissions-dialog"]').within(() => {
       selectByText("role-permission-add-select", "users/read");
       cy.get('[data-cy="role-permission-add-submit"]').click();
+      cy.wait("@assignRolePermission").its("response.statusCode").should("be.oneOf", [200, 201, 204]);
+      cy.wait("@rolePermissions");
       cy.contains('[data-cy="role-permission-item"]', "users/read").find('[data-cy="role-permission-remove"]').click();
+      cy.wait("@removeRolePermission").then(({ request, response }) => {
+        expect(response?.statusCode, "estado de quitar permiso").to.be.oneOf([200, 204]);
+        expect(request.body, "petición de quitar permiso").to.have.property("permission_id");
+      });
+      cy.wait("@rolePermissions").its("response.statusCode").should("eq", 200);
       cy.get('[data-cy="role-permission-item"]').should("not.exist");
     });
+    toast("Permiso quitado");
+    recordTimings({ assign: assignTiming, remove: removeTiming });
     cy.get("body").type("{esc}");
 
     // Asignar el rol a un usuario y luego intentar borrarlo.
