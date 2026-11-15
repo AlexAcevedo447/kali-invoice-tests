@@ -67,8 +67,10 @@ const expectViewMatchesServer = (inv: ServerInvoice) => {
   cy.get('[data-cy="invoice-view-subtotal"]').invoke("attr", "data-value").then(Number).should("eq", inv.Subtotal);
   cy.get('[data-cy="invoice-view-tax-total"]').invoke("attr", "data-value").then(Number).should("eq", inv.TaxTotal);
   cy.get('[data-cy="invoice-view-total"]').invoke("attr", "data-value").then(Number).should("eq", inv.Total);
-  // D4-04: el TEXTO mostrado tampoco se redondea (solo se completan ceros hasta 2 decimales).
-  const shownNumber = (text: string) => Number(text.replace(/[−$\s-]/g, ""));
+  // Presentación: el texto es solo formato visual es-CO con 2 decimales; el valor exacto
+  // del servidor se compara arriba por data-value (no se exige mostrar artefactos de float).
+  const money = (value: number) =>
+    `$${new Intl.NumberFormat("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(value))}`;
   (
     [
       ["invoice-view-subtotal", inv.Subtotal],
@@ -76,7 +78,7 @@ const expectViewMatchesServer = (inv: ServerInvoice) => {
       ["invoice-view-total", inv.Total],
     ] as const
   ).forEach(([cyName, value]) =>
-    cy.get(`[data-cy="${cyName}"]`).invoke("text").then((t) => expect(shownNumber(t), `${cyName} mostrado sin redondeo`).to.eq(Math.abs(value)))
+    cy.get(`[data-cy="${cyName}"]`).invoke("text").then((t) => expect(t, `${cyName} con formato es-CO de 2 decimales`).to.contain(money(value)))
   );
   const amounts = inv.Items.flatMap((i) => (i.Taxes ?? []).map((t) => t.Amount)).sort();
   if (amounts.length === 0) {
@@ -85,8 +87,10 @@ const expectViewMatchesServer = (inv: ServerInvoice) => {
     cy.get('[data-cy="invoice-view-tax-amount"]').should("have.length", amounts.length).then(($a) => {
       const shown = [...$a].map((el) => Number(el.getAttribute("data-value"))).sort();
       expect(shown).to.deep.eq(amounts);
-      const texts = [...$a].map((el) => shownNumber(el.textContent ?? "")).sort();
-      expect(texts, "importes de impuestos mostrados sin redondeo").to.deep.eq(amounts);
+      [...$a].forEach((el) => {
+        const raw = Number(el.getAttribute("data-value"));
+        expect(el.textContent ?? "", "importe con formato es-CO de 2 decimales").to.contain(money(raw));
+      });
     });
   }
   const noTaxLines = inv.Items.filter((i) => (i.Taxes ?? []).length === 0).length;
@@ -171,14 +175,14 @@ describe("CP-E2E-011 - Impuestos múltiples por línea (UI)", () => {
     pick("customer-select", customer.name);
     pick("product-select-0", products[0].code);
     cy.get('[id="items.0.quantity"]').clear().type("3");
-    cy.get('[id="items.0.unitPrice"]').clear().type("33.33");
+    cy.get('[id="items.0.unitPrice"]').clear().type("33,33");
     // D4-01: una línea nueva no trae impuestos inventados.
     cy.get('[data-cy="item-0-no-taxes"]').should("have.text", "Sin impuestos");
 
     addTax(0, 0, "IVA", "DEBIT", "19");
     addTax(0, 1, "INC", "DEBIT", "8");
-    addTax(0, 2, "RETEFUENTE", "CREDIT", "2.5");
-    addTax(0, 3, "ReteICA", "", "0.414");
+    addTax(0, 2, "RETEFUENTE", "CREDIT", "2,5");
+    addTax(0, 3, "ReteICA", "", "0,414");
     addTax(0, 4, " iva ", "CREDIT", "1");
     cy.contains(".p-dialog button", "Create Invoice").click();
     // D4-03: el tipo es obligatorio; D4-02: código repetido (mayúsculas/espacios).
@@ -232,8 +236,8 @@ describe("CP-E2E-011 - Impuestos múltiples por línea (UI)", () => {
         expectTaxRows(lineIndex, [
           ["IVA", "DEBIT", "19"],
           ["INC", "DEBIT", "8"],
-          ["RETEFUENTE", "CREDIT", "2.5"],
-          ["RETEICA", "CREDIT", "0.414"],
+          ["RETEFUENTE", "CREDIT", "2,5"],
+          ["RETEICA", "CREDIT", "0,414"],
         ]);
         cy.get(`[data-cy="item-${emptyIndex}-no-taxes"]`).should("have.text", "Sin impuestos");
         cy.contains(".p-dialog button", "Update Invoice").click();
@@ -254,8 +258,8 @@ describe("CP-E2E-011 - Impuestos múltiples por línea (UI)", () => {
       cy.intercept("PUT", "**/api/v1/invoice-items/*").as("itemPut");
       openFromRow(id, "Editar");
       cy.get('[data-cy="item-0-tax-1-remove"]').click(); // quita INC
-      cy.get('[data-cy="item-0-tax-0-rate"]').clear().type("5.5"); // IVA 19 → 5.5
-      addTax(0, 3, "ICA", "CREDIT", "0.966");
+      cy.get('[data-cy="item-0-tax-0-rate"]').clear().type("5,5"); // IVA 19 → 5,5 (coma decimal es-CO)
+      addTax(0, 3, "ICA", "CREDIT", "0,966");
       cy.contains(".p-dialog button", "Update Invoice").click();
       cy.wait("@itemPut").then((i) => {
         expect(i.response?.statusCode).to.eq(200);
@@ -270,10 +274,10 @@ describe("CP-E2E-011 - Impuestos múltiples por línea (UI)", () => {
       cy.reload();
       openFromRow(id, "Editar");
       expectTaxRows(0, [
-        ["IVA", "DEBIT", "5.5"],
-        ["RETEFUENTE", "CREDIT", "2.5"],
-        ["RETEICA", "CREDIT", "0.414"],
-        ["ICA", "CREDIT", "0.966"],
+        ["IVA", "DEBIT", "5,5"],
+        ["RETEFUENTE", "CREDIT", "2,5"],
+        ["RETEICA", "CREDIT", "0,414"],
+        ["ICA", "CREDIT", "0,966"],
       ]);
       // Quitar todos: la línea queda "Sin impuestos" sin inventar un IVA 0 %.
       [3, 2, 1, 0].forEach((j) => cy.get(`[data-cy="item-0-tax-${j}-remove"]`).click());

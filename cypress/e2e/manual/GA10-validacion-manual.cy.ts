@@ -495,8 +495,9 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
       cy.visit("/invoicing/invoices");
       cy.get(ROWS).should("have.length", PAGE_SIZE);
       const amounts = () =>
-        cy.get(`${ROWS} td:nth-child(3)`).then(($c) =>
-          [...$c].map((c) => Number((c as HTMLElement).innerText.replace(/[^0-9.]/g, "")))
+        // El texto es formato visual es-CO ("$3.684,43"); se ordena por el valor del servidor (data-value).
+        cy.get(`${ROWS} [data-cy="invoice-row-amount"]`).then(($c) =>
+          [...$c].map((c) => Number((c as HTMLElement).getAttribute("data-value")))
         );
       cy.contains("th", "Monto").click();
       amounts().then((a) => {
@@ -582,7 +583,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
           .should("contain.text", customer.name)
           .and("contain.text", customer.document)
           .and("not.contain.text", customer.id)
-          .and("contain.text", "$238.00");
+          .and("contain.text", "$238,00");
         shot("C19d-crear-factura-en-listado");
         cy.reload();
         cy.contains(ROWS, invoiceNumber(id)).should("contain.text", customer.name);
@@ -656,11 +657,11 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         });
         cy.get(".p-dialog:visible").should("not.exist");
         // 3 × 999 + 19 % = 3566.43; 2 × 50 + 18 % = 118 → 3684.43
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer.name).and("contain.text", "$3684.43");
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer.name).and("contain.text", "$3.684,43");
         shot("C20b-editar-factura-resultado");
 
         cy.reload();
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer.name).and("contain.text", "$3684.43").and("contain.text", "15/1/2027");
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", newCustomer.name).and("contain.text", "$3.684,43").and("contain.text", "15/1/2027");
         getInvoice(id).then((inv) => {
           rec("editar.backend_despues", { CustomerID: inv.CustomerID, DueDate: inv.DueDate, Total: inv.Total, Items: inv.Items.length });
           expect(inv.CustomerID).to.eq(newCustomer.id);
@@ -683,7 +684,7 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
         cy.wait("@itemDelete").its("response.statusCode").should("eq", 204);
         toasts().then((t) => expect(t.join(" ")).to.contain("Factura actualizada correctamente"));
         cy.reload();
-        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", "$100.00");
+        cy.contains(ROWS, invoiceNumber(id)).should("contain.text", "$100,00");
         getInvoice(id).then((inv) => {
           expect(inv.Items).to.have.length(1);
           expect(inv.Total).to.eq(100);
