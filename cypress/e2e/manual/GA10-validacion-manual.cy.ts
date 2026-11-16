@@ -1000,10 +1000,21 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     });
 
     it("3.4 correo duplicado", () => {
+      // Datos propios: el usuario existente se crea aquí por API, sin depender de 3.3.
+      const existingEmail = uniqueEmail("ga10-duplicado");
+      loginAsAdmin().then((session) => {
+        createUser(AUTH(), session.access_token, idempotencyKey(), {
+          tenant_id: TENANT(),
+          identification_number: uniqueIdentificationNumber(),
+          username: uniqueName("ga10-duplicado"),
+          email: existingEmail,
+          password: PASSWORD,
+        }).its("status").should("eq", 201);
+      });
       loginToUI();
       cy.intercept("POST", "**/api/v1/users*").as("createUser");
       cy.visit("/admin/users");
-      fillUserForm(adminRoleEmail, PASSWORD, "admin");
+      fillUserForm(existingEmail, PASSWORD, "admin");
       cy.get('[data-cy="user-submit"]').click();
       cy.wait("@createUser").its("response.statusCode").should("eq", 409);
       toasts().then((t) => {
