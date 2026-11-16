@@ -24,10 +24,44 @@ que crea quedan en esa empresa y no afectan a las de otras pruebas ni a datos re
 | `validate` | Carga los dos planes sin ejecutar usuarios; falla si un `.jmx` es inválido | No | — |
 | `provision` | Crea o reutiliza (idempotente) la empresa, rol, usuario, cliente y producto de performance | Sí | `KALI_PLATFORM_ADMIN_PASSWORD`, `KALI_PERF_USER_PASSWORD` |
 | `smoke` | **Ejecución mínima**: 1 usuario, 1 iteración; debe terminar sin errores | Sí | `KALI_PERF_USER_PASSWORD` |
-| `load` | Ejecuta primero `smoke` y **solo si pasa** el perfil de carga (`config/profiles/load.properties`) | Sí | `KALI_PERF_USER_PASSWORD` |
+| `load` | **Validación funcional**: ejecuta primero `smoke` y **solo si pasa** el perfil `load` (iteraciones fijas, sin pausas) | Sí | `KALI_PERF_USER_PASSWORD` |
+| `concurrency` | **Solo ambientes locales** (`kind=local`; con otro tipo aborta con código 3). `smoke` y luego escalones de usuarios por tiempo con pausas (ver abajo) | Sí | `KALI_PERF_USER_PASSWORD` |
 
-Orden recomendado: `validate` → `provision` (una vez por ambiente) → `smoke` → `load`.
-El volumen se ajusta con `-Jthreads=… -Jrampup=… -Jloops=…` (no se aceptan credenciales como `-J`).
+Orden recomendado: `validate` → `provision` (una vez por ambiente) → `smoke` → `load` → `concurrency`.
+El volumen de `load` se ajusta con `-Jthreads=… -Jrampup=… -Jloops=…` (no se aceptan credenciales como `-J`).
+
+`load` valida que el plan funciona de punta a punta; **no mide concurrencia**: sin pausas, cada
+usuario termina sus iteraciones en menos de un segundo y en la práctica hay un solo usuario activo.
+
+## Prueba local de concurrencia (exploratoria)
+
+`plans/invoice-kali-concurrency.jmx` repite los pasos de `invoice-kali.jmx`, pero por **tiempo** y
+con una **pausa aleatoria de 1–3 s** antes de consultar y antes de crear cada factura.
+`config/profiles/concurrency.properties` define escalones **secuenciales** de **1, 5 y 10
+usuarios**. En cada escalón:
+
+| Fase | Duración | Se mide |
+| --- | --- | --- |
+| Subida gradual de usuarios | 30 s | No (calentamiento) |
+| Estabilización | 30 s | No (calentamiento) |
+| Carga sostenida | 120 s | **Sí** |
+
+`scripts/analyze-step.groovy` (Groovy incluido en JMeter) separa las fases por tiempo y calcula,
+**solo en la medición** y por operación: peticiones, errores, media, p95 y throughput. Además
+informa cuántos usuarios estuvieron **activos simultáneamente**: usuarios virtuales vivos
+(mínimo, máximo y media), usuarios con muestras y máximo de peticiones en vuelo a la vez.
+
+El consumo de recursos (CPU y memoria de los contenedores) se toma **desde el host** con
+`docker stats`, para que la imagen de JMeter no necesite acceso a Docker:
+
+```bash
+cd jmeter
+export KALI_PERF_USER_PASSWORD='<…>'
+scripts/host/concurrency-local.sh      # = docker compose run --rm jmeter concurrency + muestreo de recursos
+```
+
+Son **mediciones exploratorias** de un equipo local: no establecen la capacidad de producción
+ni definen umbrales de aceptación.
 
 ## Ambientes
 
@@ -87,6 +121,11 @@ Requiere Java 17+, JMeter 5.6.3 y `jq`.
 - `summary.txt`: muestras, errores y tiempos por operación.
 - `jmeter.log` y `console.log`.
 
+Concurrencia: `results/<fecha>-<ambiente>-concurrency/` con `step-01u/`, `step-05u/` y
+`step-10u/`. Cada uno contiene `results.jtl`, `report/`, `measurement.json` (fases, ventanas,
+métricas y usuarios activos) y `summary.txt`. En la raíz quedan `windows.csv`, `summary.txt`,
+`resources.csv` y `resources-summary.txt`; estos dos últimos solo con `scripts/host/concurrency-local.sh`.
+
 ## Estructura
 
 ```
@@ -94,9 +133,10 @@ jmeter/
 ├── Dockerfile, .dockerignore, compose.yaml
 ├── config/
 │   ├── environments/   local, local-docker, test.example, production.example
-│   ├── profiles/       validate, smoke, load
+│   ├── profiles/       validate, smoke, load, concurrency
 │   └── jmeter-results.properties
-├── plans/              invoice-kali.jmx, provision-perf-data.jmx
-├── scripts/            run.sh, provision.groovy
+├── plans/              invoice-kali.jmx, invoice-kali-concurrency.jmx, provision-perf-data.jmx
+├── scripts/            run.sh, provision.groovy, analyze-step.groovy
+│   └── host/           concurrency-local.sh (se ejecuta en el host; no entra en la imagen)
 └── results/            (ignorado por git)
 ```

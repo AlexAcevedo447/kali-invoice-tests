@@ -16,6 +16,7 @@ services:
       KALI_PERF_USER_PASSWORD: ${KALI_PERF_USER_PASSWORD:-}
       KALI_PLATFORM_ADMIN_PASSWORD: ${KALI_PLATFORM_ADMIN_PASSWORD:-}
       KALI_ALLOW_PRODUCTION_LOAD: ${KALI_ALLOW_PRODUCTION_LOAD:-}
+      KALI_PERF_RUN_ID: ${KALI_PERF_RUN_ID:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Ejecutor de JMeter para InvoiceKali (independiente de Cypress: no usa Node).
 #
-# Uso:  run.sh <validate|provision|smoke|load> [--env NOMBRE] [-Jclave=valor ...]
-#   validate   carga los planes sin ejecutar usuarios (sin red); falla si un .jmx es inválido
-#   provision  crea/reutiliza los datos exclusivos de performance (idempotente)
-#   smoke      ejecución mínima (1 usuario, 1 iteración); debe pasar sin errores
-#   load       ejecuta primero smoke y, solo si pasa, el perfil de carga
+# Uso:  run.sh <validate|provision|smoke|load|concurrency> [--env NOMBRE] [-Jclave=valor ...]
+#   validate     carga los planes sin ejecutar usuarios (sin red); falla si un .jmx es inválido
+#   provision    crea/reutiliza los datos exclusivos de performance (idempotente)
+#   smoke        ejecución mínima (1 usuario, 1 iteración); debe pasar sin errores
+#   load         validación funcional: smoke y, solo si pasa, el perfil load (iteraciones fijas)
+#   concurrency  SOLO ambientes locales: smoke y luego escalones de usuarios por tiempo con
+#                pausas (config/profiles/concurrency.properties); separa calentamiento y
+#                medición por escalón. Exploratoria: no establece capacidad ni umbrales.
 #
 # Ambiente: --env o KALI_PERF_ENV (por defecto: local; en la imagen Docker: local-docker).
 #   config/environments/<NOMBRE>.properties. Si su kali.environment.kind es "production",
@@ -94,9 +97,50 @@ run_plan() { # <plan> <profile> <label>
   echo "$out"
 }
 
+# Groovy incluido en JMeter (sin dependencias externas) para analizar cada escalón.
+groovy_run() {
+  local home="${JMETER_HOME:-}"
+  if [ -z "$home" ]; then home="$(cd "$(dirname "$(readlink -f "$(command -v "$JMETER_BIN")")")/.." && pwd)"; fi
+  java -cp "$home/lib/*" groovy.ui.GroovyMain "$@"
+}
+
+run_concurrency() {
+  local profile="$ROOT/config/profiles/concurrency.properties" run_id out steps rampup warmup hold n step_out failed=0
+  pp() { grep -E "^$1=" "$profile" | tail -1 | cut -d= -f2- | tr -d '\r '; }
+  steps="$(pp concurrency.steps)"; rampup="$(pp concurrency.rampup)"; warmup="$(pp concurrency.warmup)"; hold="$(pp concurrency.hold)"
+  run_id="${KALI_PERF_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$ENV_NAME-concurrency}"
+  [[ "$run_id" =~ ^[A-Za-z0-9._-]+$ ]] || die "KALI_PERF_RUN_ID inválido: $run_id" 2
+  out="$RESULTS_ROOT/$run_id"; mkdir -p "$out"
+  echo "paso,usuarios,fase,inicio_epoch_ms,fin_epoch_ms" > "$out/windows.csv"
+  for n in ${steps//,/ }; do
+    step_out="$out/step-$(printf '%02d' "$n")u"; mkdir -p "$step_out"
+    echo "== escalón $n usuario(s): subida ${rampup}s + estabilización ${warmup}s + medición ${hold}s" >&2
+    # duración = calentamiento + medición + 5 s de margen (lo posterior queda fuera de la ventana).
+    "$JMETER_BIN" -n -t "$ROOT/plans/invoice-kali-concurrency.jmx" \
+      -q "$ENV_FILE" -q "$profile" -q "$ROOT/config/jmeter-results.properties" \
+      -Jthreads="$n" -Jrampup="$rampup" -Jduration="$((rampup + warmup + hold + 5))" \
+      "${EXTRA[@]+"${EXTRA[@]}"}" \
+      -l "$step_out/results.jtl" -j "$step_out/jmeter.log" -e -o "$step_out/report" >"$step_out/console.log" 2>&1 || {
+        tail -20 "$step_out/console.log" >&2; die "JMeter terminó con error (escalón $n)"; }
+    check_no_secrets "$step_out"
+    groovy_run "$ROOT/scripts/analyze-step.groovy" "$step_out/results.jtl" "$n" "$rampup" "$warmup" "$hold" "$step_out/measurement.json" \
+      | tee "$step_out/summary.txt" >&2
+    jq -r --arg n "$n" '.fases | to_entries[] | "\($n)u,\($n),\(.key),\(.value.ventana_epoch_ms[0]),\(.value.ventana_epoch_ms[1])"' \
+      "$step_out/measurement.json" >> "$out/windows.csv"
+    [ "$(jq '.fases.medicion.total.errores' "$step_out/measurement.json")" -eq 0 ] || failed=1
+  done
+  {
+    echo "ambiente=$ENV_NAME tipo=$KIND perfil=concurrency escalones=$steps subida=${rampup}s estabilización=${warmup}s medición=${hold}s pausas=$(pp think.min.ms)-$(pp think.max.ms)ms"
+    cat "$out"/step-*/summary.txt
+  } > "$out/summary.txt"
+  check_no_secrets "$out"
+  echo "Resultados: $out" >&2
+  [ "$failed" -eq 0 ] || die "Hubo errores en la medición (ver $out/summary.txt)" 1
+}
+
 case "$COMMAND" in
   validate)
-    for plan in invoice-kali.jmx provision-perf-data.jmx; do
+    for plan in invoice-kali.jmx invoice-kali-concurrency.jmx provision-perf-data.jmx; do
       out="$RESULTS_ROOT/validate-$(date -u +%Y%m%dT%H%M%SZ)"; mkdir -p "$out"
       "$JMETER_BIN" -n -t "$ROOT/plans/$plan" -q "$ENV_FILE" -q "$ROOT/config/profiles/validate.properties" \
         -q "$ROOT/config/jmeter-results.properties" -Jkali.root="$ROOT" -l "$out/$plan.jtl" -j "$out/$plan.log" >"$out/$plan.console" 2>&1 \
@@ -121,5 +165,13 @@ case "$COMMAND" in
     run_plan invoice-kali.jmx smoke smoke >/dev/null || die "Smoke falló: no se ejecuta la carga"
     run_plan invoice-kali.jmx load load >/dev/null
     ;;
-  *) die "Comando desconocido: $COMMAND (validate|provision|smoke|load)" 2 ;;
+  concurrency)
+    # Exploratoria y solo local: nunca contra test ni producción (ni con autorización).
+    [ "$KIND" = "local" ] || die "La prueba de concurrencia solo se ejecuta en ambientes locales (ambiente '$ENV_NAME' es '$KIND')" 3
+    require_env KALI_PERF_USER_PASSWORD
+    echo "== Paso previo obligatorio: smoke" >&2
+    run_plan invoice-kali.jmx smoke smoke >/dev/null || die "Smoke falló: no se ejecuta la concurrencia"
+    run_concurrency
+    ;;
+  *) die "Comando desconocido: $COMMAND (validate|provision|smoke|load|concurrency)" 2 ;;
 esac

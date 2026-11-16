@@ -6,3 +6,5 @@ config/environments/production.properties
 .env.*
 *.log
 .DS_Store
+# Scripts que se ejecutan en el host (usan docker), no dentro de la imagen
+scripts/host/
