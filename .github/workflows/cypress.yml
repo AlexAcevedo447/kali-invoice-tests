@@ -89,6 +89,11 @@ jobs:
           ref: ${{ inputs.front_ref || 'main' }}
           path: stack/invoice-kali-front
 
+      - name: Compatibilidad de versiones (falla pronto si falta algo que la suite necesita)
+        run: |
+          mkdir -p logs
+          bash tests/cypress/scripts/ci/check-stack-compat.sh stack logs/versions.txt
+
       - name: Stack local (auth y facturación)
         working-directory: stack/invoice-kali-front
         run: |

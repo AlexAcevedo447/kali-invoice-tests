@@ -79,6 +79,9 @@ de red que registran (`results/timings/`, p. ej. `CP-E2E-009.jsonl`). En contene
 - `verificar`: `npm ci` sin binario, tipos e imagen.
 - `front-compilado` (PR, push a `main` y a demanda): clona `kali-auth-context`,
   `kali-invoice-service` e `invoice-kali-front` (ramas elegibles; por defecto `main`). Después:
+  0. `scripts/ci/check-stack-compat.sh` registra el commit de los **cuatro** repositorios en
+     `logs/versions.txt` y comprueba que tienen lo que la suite necesita. Si falta algo, falla
+     antes de levantar nada e indica qué.
   1. Levanta auth y facturación con sus compose de desarrollo.
   2. Detiene Vite y sirve el front compilado con `docker-compose.prod.local.yml` en el puerto 15081.
   3. Comprueba que nginx enruta facturación igual que el servicio directo.
@@ -88,9 +91,30 @@ de red que registran (`results/timings/`, p. ej. `CP-E2E-009.jsonl`). En contene
   estado de contenedores, salud del stack y consola del navegador (`ELECTRON_ENABLE_LOGGING=1`).
   Credenciales: las de desarrollo del propio stack efímero y una generada para la semilla demo,
   enmascaradas; si alguna aparece en los resultados, se descartan.
-  Requiere que la rama del front tenga la configuración de producción local con enrutamiento a
-  facturación y `extra_hosts`.
 - `ambiente-test` (solo a demanda): contra el ambiente compartido `test`, con secretos del ambiente.
+
+### Versiones compatibles y orden de publicación
+
+La versión de pruebas es la del commit que ejecuta el pipeline (rama elegida al lanzarlo). Las
+otras tres se eligen con `auth_ref`, `invoice_ref` y `front_ref`.
+
+| Requisito de la suite | Repositorio | En `main` hoy |
+| --- | --- | --- |
+| `users/by-email` y `rbac/users/roles/assign` | kali-auth-context | Sí |
+| Impuestos por línea (incremento 4) | kali-invoice-service | Sí |
+| `PrimeReactProvider` en `src/main.tsx` | invoice-kali-front | **No** (rama `feature/jmeter-independiente`) |
+| `docker-compose.prod.local.yml` con base relativa y `host-gateway`, y nginx con ruta a facturación | invoice-kali-front | **No** (rama `feature/jmeter-independiente`) |
+
+Orden para que el pipeline pase en `main`:
+
+1. **Front**: integrar en su `main` los cambios de `feature/jmeter-independiente`.
+2. **Pruebas**: integrar después este repositorio en `main`. El push a `main` dispara
+   `front-compilado` contra el `main` de los otros tres. Si se integrara antes que el front, el
+   paso 0 fallaría indicando los requisitos que faltan.
+3. Auth y facturación no necesitan cambios.
+
+Antes de publicar se puede ejecutar a demanda con `front_ref=feature/jmeter-independiente`, una
+vez publicada esa rama.
 
 ## Estructura de carpetas
 
