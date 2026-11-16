@@ -74,6 +74,24 @@ los JSON que escriben algunas specs (p. ej. `results/GA10-observaciones.json`) y
 de red que registran (`results/timings/`, p. ej. `CP-E2E-009.jsonl`). En contenedor,
 `results/` se monta en `/tests/results`.
 
+## Pipeline (`.github/workflows/cypress.yml`)
+
+- `verificar`: `npm ci` sin binario, tipos e imagen.
+- `front-compilado` (PR, push a `main` y a demanda): clona `kali-auth-context`,
+  `kali-invoice-service` e `invoice-kali-front` (ramas elegibles; por defecto `main`). Después:
+  1. Levanta auth y facturación con sus compose de desarrollo.
+  2. Detiene Vite y sirve el front compilado con `docker-compose.prod.local.yml` en el puerto 15081.
+  3. Comprueba que nginx enruta facturación igual que el servicio directo.
+  4. Corre la suite completa en una sola ejecución con `KALI_TEST_ENV=local-docker-build`.
+
+  Siempre, también si falla, sube como artefacto `results/` y `logs/`: front, APIs, bases,
+  estado de contenedores, salud del stack y consola del navegador (`ELECTRON_ENABLE_LOGGING=1`).
+  Credenciales: las de desarrollo del propio stack efímero y una generada para la semilla demo,
+  enmascaradas; si alguna aparece en los resultados, se descartan.
+  Requiere que la rama del front tenga la configuración de producción local con enrutamiento a
+  facturación y `extra_hosts`.
+- `ambiente-test` (solo a demanda): contra el ambiente compartido `test`, con secretos del ambiente.
+
 ## Estructura de carpetas
 
 ```

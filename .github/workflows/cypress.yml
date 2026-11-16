@@ -1,4 +1,8 @@
 # Pipeline de Cypress (independiente de JMeter: no instala Java ni toca jmeter/).
+#   verificar        tipos e imagen de tareas (siempre).
+#   front-compilado  suite completa contra el front COMPILADO (nginx, docker-compose.prod.local.yml)
+#                    sobre un stack local efímero en el runner; en PR, push a main y a demanda.
+#   ambiente-test    a demanda, contra el ambiente compartido de pruebas (nunca producción).
 name: cypress
 
 on:
@@ -9,14 +13,26 @@ on:
     paths: ["cypress/**", ".github/workflows/cypress.yml"]
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Ambiente (Cypress no se ejecuta contra producción)"
+      objetivo:
+        description: "Qué probar (Cypress no se ejecuta contra producción)"
         type: choice
-        options: [test]
-        default: test
+        options: [front-compilado, ambiente-test]
+        default: front-compilado
       spec:
-        description: "Specs (patrón relativo a cypress/)"
-        default: "e2e/api/**/*.cy.ts"
+        description: "Specs (patrón relativo a cypress/); vacío = suite completa"
+        default: ""
+      auth_ref:
+        description: "Rama o commit de kali-auth-context"
+        default: main
+      invoice_ref:
+        description: "Rama o commit de kali-invoice-service"
+        default: main
+      front_ref:
+        description: "Rama o commit de invoice-kali-front"
+        default: main
+
+env:
+  SUITE_COMPLETA: "e2e/api/**/*.cy.ts,e2e/ui/**/*.cy.ts,e2e/manual/GA10-validacion-manual.cy.ts,e2e/demo/seed-video-demo.cy.ts"
 
 defaults:
   run:
@@ -41,31 +57,134 @@ jobs:
       - name: Imagen de tareas
         run: docker build -t kali-tests-cypress:ci .
 
-  ejecutar:
-    # Solo manual y contra el ambiente de pruebas; credenciales desde secretos del ambiente.
-    if: github.event_name == 'workflow_dispatch'
+  front-compilado:
+    # Stack local efímero: auth y facturación con sus compose de desarrollo y el front compilado
+    # servido por nginx con su configuración de producción local. Credenciales: las de
+    # desarrollo del propio stack (.env.example de auth) y una generada para la semilla demo;
+    # se enmascaran y no se escriben en resultados. No toca ambientes compartidos.
+    if: github.event_name != 'workflow_dispatch' || inputs.objetivo == 'front-compilado'
     needs: verificar
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: tests
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexAcevedo447/kali-auth-context
+          ref: ${{ inputs.auth_ref || 'main' }}
+          path: stack/kali-auth-context
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexAcevedo447/kali-invoice-service
+          ref: ${{ inputs.invoice_ref || 'main' }}
+          path: stack/kali-invoice-service
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexAcevedo447/invoice-kali-front
+          ref: ${{ inputs.front_ref || 'main' }}
+          path: stack/invoice-kali-front
+
+      - name: Stack local (auth y facturación)
+        working-directory: stack/invoice-kali-front
+        run: |
+          ./scripts/dev-stack-up.sh
+          for i in $(seq 1 60); do ./scripts/dev-stack-health.sh >/dev/null 2>&1 && break; sleep 5; done
+          ./scripts/dev-stack-health.sh
+          # Las pruebas van contra el front compilado, no contra Vite.
+          docker stop invoice-kali-front-dev
+
+      - name: Front compilado (docker-compose.prod.local.yml, puerto 15081)
+        working-directory: stack/invoice-kali-front
+        run: |
+          docker compose -f docker-compose.prod.local.yml up -d --build
+          for i in $(seq 1 30); do curl -fs http://localhost:15081/health >/dev/null && break; sleep 2; done
+          curl -fs http://localhost:15081/health
+          # Enrutamiento: facturación por nginx debe responder igual que el servicio directo.
+          [ "$(curl -s http://localhost:15081/api/v1/invoices)" = "$(curl -s http://localhost:8080/api/v1/invoices)" ]
+
+      - name: Credenciales del stack efímero (enmascaradas)
+        run: |
+          admin="$(grep -E '^SEED_MASTER_PASSWORD=' stack/kali-auth-context/.env.dev | cut -d= -f2-)"
+          demo="Demo#$(openssl rand -hex 8)Aa1"
+          echo "::add-mask::$admin"; echo "::add-mask::$demo"
+          { echo "CYPRESS_AUTH_ADMIN_PASSWORD=$admin"; echo "CYPRESS_DEMO_ADMIN_PASSWORD=$demo"; } >> "$GITHUB_ENV"
+
+      - name: Cypress en contenedor de tarea (una sola corrida)
+        run: |
+          docker build -t kali-tests-cypress:ci tests/cypress
+          mkdir -p tests/cypress/results logs
+          set +e
+          docker run --rm --add-host host.docker.internal:host-gateway \
+            -e KALI_TEST_ENV=local-docker-build \
+            -e ELECTRON_ENABLE_LOGGING=1 \
+            -e CYPRESS_AUTH_ADMIN_PASSWORD -e CYPRESS_DEMO_ADMIN_PASSWORD \
+            -v "$PWD/tests/cypress/results:/tests/results" \
+            kali-tests-cypress:ci --spec "${{ inputs.spec || env.SUITE_COMPLETA }}" 2>&1 | tee logs/cypress-console.log
+          status=${PIPESTATUS[0]}
+          for v in CYPRESS_AUTH_ADMIN_PASSWORD CYPRESS_DEMO_ADMIN_PASSWORD; do
+            if grep -rqF -- "${!v}" tests/cypress/results logs; then echo "Credencial en resultados: se descartan"; sudo rm -rf tests/cypress/results logs/cypress-console.log; status=4; fi
+          done
+          exit $status
+
+      - name: Logs del front, APIs, bases y navegador (siempre, antes de bajar)
+        if: always()
+        run: |
+          mkdir -p logs
+          docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' > logs/containers.txt
+          for c in $(docker ps -a --format '{{.Names}}'); do docker logs --timestamps "$c" > "logs/$c.log" 2>&1 || true; done
+          (cd stack/invoice-kali-front && ./scripts/dev-stack-health.sh > ../../logs/health.txt 2>&1 || true)
+          docker stats --no-stream > logs/docker-stats.txt 2>&1 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cypress-front-compilado
+          path: |
+            tests/cypress/results
+            logs
+          retention-days: 14
+
+      - name: Bajar el stack efímero
+        if: always()
+        working-directory: stack/invoice-kali-front
+        run: |
+          docker compose -f docker-compose.prod.local.yml down || true
+          ./scripts/dev-stack-down.sh || true
+
+  ambiente-test:
+    # Solo manual y contra el ambiente de pruebas; credenciales desde secretos del ambiente.
+    if: github.event_name == 'workflow_dispatch' && inputs.objetivo == 'ambiente-test'
+    needs: verificar
+    runs-on: ubuntu-latest
+    environment: test
     steps:
       - uses: actions/checkout@v4
       - name: Configuración del ambiente (sin secretos)
-        run: echo '${{ vars.CYPRESS_ENVIRONMENT_JSON }}' > config/environments/${{ inputs.environment }}.json
+        run: echo '${{ vars.CYPRESS_ENVIRONMENT_JSON }}' > config/environments/test.json
       - name: Ejecutar Cypress en contenedor de tarea
         run: |
           docker build -t kali-tests-cypress:ci .
+          mkdir -p results
+          set +e
           docker run --rm \
-            -e KALI_TEST_ENV=${{ inputs.environment }} \
+            -e KALI_TEST_ENV=test \
+            -e ELECTRON_ENABLE_LOGGING=1 \
             -e CYPRESS_AUTH_ADMIN_PASSWORD \
             -e CYPRESS_DEMO_ADMIN_PASSWORD \
             -v "$PWD/config/environments:/tests/config/environments:ro" \
             -v "$PWD/results:/tests/results" \
-            kali-tests-cypress:ci --spec "${{ inputs.spec }}"
+            kali-tests-cypress:ci --spec "${{ inputs.spec || 'e2e/api/**/*.cy.ts' }}" 2>&1 | tee results/cypress-console.log
+          exit ${PIPESTATUS[0]}
         env:
           CYPRESS_AUTH_ADMIN_PASSWORD: ${{ secrets.KALI_AUTH_ADMIN_PASSWORD }}
           CYPRESS_DEMO_ADMIN_PASSWORD: ${{ secrets.KALI_DEMO_ADMIN_PASSWORD }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: cypress-results
+          name: cypress-ambiente-test
           path: cypress/results
