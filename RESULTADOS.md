@@ -16,8 +16,9 @@ compartidos. Cada cifra corresponde a **una sola corrida**; no se suman corridas
 
 - **CP-E2E-009** (quitar un permiso del rol) se sincroniza con la respuesta de red, sin pausas ni
   tiempos globales. Duración registrada de la petición: 21–63 ms (`results/timings/CP-E2E-009.jsonl`).
-- **GA10 3.4** crea su propio usuario existente: pasó **sola**, con `it.only` en una copia
-  temporal, y dentro de la suite completa.
+- **GA10 3.4 y 3.5** preparan sus propios datos por API y ya no dependen de 3.3. Cada una pasó
+  **sola** (`it.only` en una copia temporal: 3.4 cuatro veces, 3.5 tres veces) y dentro de la
+  suite completa.
 - **Fallos contra Vite**: todos son de la misma clase. La página no dispara `load` en 60 s, queda
   en `readyState=interactive` y React no monta. Ocurrieron en CP-E2E-011, CP-E2E-012 y GA10 3.3,
   y antes en GA10 3.7. Con el front compilado no ocurrieron en las dos corridas completas.
@@ -49,6 +50,60 @@ trazas no es posible distinguir si:
 
 Tampoco se descarta un problema de configuración o de código. Falta una captura de red en ambos
 extremos (contenedor de Cypress y contenedor del front).
+
+### Comparación controlada A/B (15 de noviembre, 20:50–22:00)
+
+Seis corridas alternadas (A1 B1 A2 B2 A3 B3), cada una en un ambiente limpio idéntico.
+
+- **Igual en ambos brazos:** código del front (con traza por petición y por conexión), semilla,
+  imagen de Cypress, flags (`ELECTRON_ENABLE_LOGGING`,
+  `DEBUG=cypress-verbose:proxy:http,cypress:cli*`), specs, credenciales generadas de la misma
+  forma y `VITE_ALLOWED_HOST=invoice-kali-front-dev`.
+- **Única variable:**
+  - **A:** el navegador llega a Vite por `host.docker.internal:15173`, el reenvío de Docker Desktop.
+  - **B:** llega por `invoice-kali-front-dev:5173`, la red interna `frontend-dev-net`.
+- **Diferencias inevitables registradas:**
+  - B conecta el contenedor de Cypress a `frontend-dev-net` y resuelve el nombre con el DNS de Docker.
+  - Las llamadas `cy.request` a las APIs siguen por `host.docker.internal` en ambos brazos.
+- **Diferencia con las corridas históricas:** ambos brazos usan `docker run`, no `docker compose run`.
+
+| Corrida | Acceso | Resultado | Código de salida | Cuelgues de carga | Esperas de 4 s vencidas | Peticiones a Vite sin respuesta | Datos sin petición en una conexión |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| A1 | host.docker.internal | 146/146 | 0 | 0 | 0 | 0 de 10 944 | 0 |
+| B1 | red interna | 146/146 | 0 | 0 | 0 | 0 de 10 935 | 0 |
+| A2 | host.docker.internal | 146/146 | 0 | 0 | 0 | 0 de 10 949 | 0 |
+| B2 | red interna | 138/146 | 8 | 0 | 8 | 0 de 10 697 | 0 |
+| A3 | host.docker.internal | 145/146 | 1 | 0 | 1 | 0 de 10 755 | 0 |
+| B3 | red interna | 146/146 | 0 | 0 | 0 | 0 de 10 943 | 0 |
+
+- **El cuelgue de carga no se reprodujo en ninguno de los dos brazos.** Antes apareció en cada
+  corrida contra Vite: 1–2 por corrida en cuatro corridas seguidas. Con cero casos, la comparación
+  **no permite** atribuirlo ni descartarlo en el reenvío de Docker Desktop. Que A1–A3 pasaran no
+  prueba nada sobre la causa. Pueden haber influido las condiciones nuevas: `docker run` en lugar
+  de `compose run`, la instrumentación de conexiones y `VITE_ALLOWED_HOST`.
+- **Los fallos de B2 y A3 son de otra clase.** La página cargó completa y React montó, pero un
+  elemento no apareció en 4 s ("Crear Factura", filas de importes, campos de usuarios). Ocurrió en
+  **ambos** brazos.
+- **B2 corrió bajo más carga del equipo.** Cypress llegó a 391% de CPU y Vite a 107%, frente a
+  240–300% y 15–34% en las demás corridas. Hubo dos login lentos (3,5 s y 2,4 s) y la corrida duró
+  17:53. Vite respondió todas las peticiones.
+- **Códigos de salida:** en las seis corridas coinciden con el número de pruebas fallidas.
+
+**Estado: incidencia del entorno Vite, causa no determinada.** Solo afecta a la ejecución contra
+el servidor de desarrollo. El pipeline habitual usa el front compilado (146/146 en sus dos
+corridas). Los fallos por esperas de 4 s bajo carga del equipo quedan como observación aparte: se
+vieron en ambos brazos y no se reproducen en el front compilado con los datos actuales. Las trazas
+de las seis corridas se conservan fuera del repositorio, con credenciales y tokens redactados.
+
+### Código de salida 1 con todas las pruebas aprobadas
+
+Ocurrió una vez, en una ejecución local de GA10 3.4 sola. El log combinado (stdout + stderr) es
+idéntico al de una ejecución con código 0, salvo la duración. No se reprodujo en 6 ejecuciones
+aisladas (3.4 y 3.5, tres veces cada una), con stdout, stderr y código guardados por separado y
+`DEBUG=cypress:cli*`. Tampoco apareció en las 6 corridas A/B. La CLI solo propaga el código del
+proceso hijo de Cypress (`child event fired { event: 'exit', code }`), así que ese código vino del
+proceso hijo después de imprimir los resultados. **Causa no determinada.** No se convirtió en 0:
+cualquier corrida con código distinto de 0 se reporta como fallida.
 
 ## JMeter
 
@@ -114,6 +169,9 @@ Cuadra exactamente con las creaciones con 201 registradas en sus `results.jtl` (
 - No se han ejecutado en GitHub: no hay push. El job `front-compilado` se reprodujo localmente
   con los mismos comandos; la única diferencia son nombres de carpeta con sufijo para no
   reutilizar los volúmenes del ambiente de desarrollo.
-- El job necesita que la rama del front que clone (por defecto `main`) tenga la configuración
-  de producción local corregida (enrutamiento a facturación y `extra_hosts`). Hoy esa corrección
-  solo existe en la rama local `feature/jmeter-independiente` del front.
+- El job comprueba primero que las versiones elegidas de los cuatro repositorios son compatibles
+  (`cypress/scripts/ci/check-stack-compat.sh`). Probado localmente: con el `main` actual del
+  front **falla** (faltan `PrimeReactProvider` y la configuración de producción local corregida);
+  con `feature/jmeter-independiente` **pasa**. Auth y facturación en `main` cumplen.
+- **Orden de publicación:** primero el front (integrar `feature/jmeter-independiente` en su
+  `main`), después este repositorio. Detalle en `cypress/README.md`.
