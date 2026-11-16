@@ -5,7 +5,7 @@ import {
   InvoiceResponse,
 } from "../../support/api/invoice/invoice-client";
 import { createRole, createTenant, createUser, getUserByEmail } from "../../support/api/auth/auth-client";
-import { assignPermissionToRole, ensurePermission } from "../../support/api/auth/rbac";
+import { assignPermissionToRole, ensurePermission, grantRoleToUserByEmail } from "../../support/api/auth/rbac";
 import { loginAsAdmin } from "../../support/api/auth/session";
 import { loginToUI } from "../../support/ui/session";
 import {
@@ -1025,8 +1025,20 @@ describe("GA10 - Validación funcional para el manual de usuario", () => {
     });
 
     it("3.5 el usuario creado con rol 'admin' ingresa y ve Facturas y Usuarios", () => {
+      // Datos propios: usuario con el rol 'admin' creado y asignado aquí por API, sin depender de 3.3.
+      const ownAdminEmail = uniqueEmail("ga10-admin-ingreso");
+      loginAsAdmin().then((session) => {
+        createUser(AUTH(), session.access_token, idempotencyKey(), {
+          tenant_id: TENANT(),
+          identification_number: uniqueIdentificationNumber(),
+          username: uniqueName("ga10-admin-ingreso"),
+          email: ownAdminEmail,
+          password: PASSWORD,
+        }).its("status").should("eq", 201);
+        grantRoleToUserByEmail(AUTH(), session.access_token, TENANT(), ownAdminEmail, `${TENANT()}-admin-role`);
+      });
       cy.intercept("POST", "**/api/v1/auth/login").as("login");
-      uiLogin(adminRoleEmail, PASSWORD);
+      uiLogin(ownAdminEmail, PASSWORD);
       cy.wait("@login").then((i) => {
         rec("usuarios.login_admin.roles", i.response?.body.roles);
         expect(i.response?.body.roles).to.include("admin");
