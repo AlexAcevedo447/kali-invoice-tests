@@ -1,0 +1,8 @@
+{
+  "AUTH_API_URL": "http://host.docker.internal:18080",
+  "INVOICE_API_URL": "http://host.docker.internal:8080",
+  "FRONT_URL": "http://host.docker.internal:15081",
+  "AUTH_TENANT_ID": "master-tenant",
+  "AUTH_ADMIN_EMAIL": "master@local.dev",
+  "DEMO_ADMIN_EMAIL": "admin.demo@local.dev"
+}

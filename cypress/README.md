@@ -10,6 +10,9 @@ resultados. No necesita Java ni JMeter. Todos los comandos se ejecutan **desde e
 - `KALI_TEST_ENV` elige `config/environments/<ambiente>.json` (por defecto **`local`**):
   - `local`: Cypress en el equipo y stack en `localhost` (`npm run stack:up` del front: 15173, 18080, 8080).
   - `local-docker`: Cypress en contenedor y stack en el host (`host.docker.internal`). Es el valor por defecto de la imagen.
+  - `local-docker-build`: igual, pero contra el front **compilado** servido por nginx con la
+    configuración de producción local del front (`docker compose -f docker-compose.prod.local.yml up -d --build`
+    en `invoice-kali-front`, puerto 15081).
   - `test.example.json`: plantilla para un ambiente compartido de pruebas (copiar a `test.json`).
   - Producción: **no soportada** (Cypress crea y modifica datos); `cypress.config.ts` la rechaza.
 - Los archivos de ambiente solo tienen URLs y correos (sin secretos). Las **contraseñas** nunca
@@ -53,7 +56,13 @@ export KALI_AUTH_ADMIN_PASSWORD='<contraseña>'         # y KALI_DEMO_ADMIN_PASS
 docker compose run --rm cypress                        # suite completa
 docker compose run --rm cypress --spec "e2e/api/**/*.cy.ts"
 KALI_TEST_ENV=test docker compose run --rm cypress     # otro ambiente (requiere config/environments/test.json)
+KALI_TEST_ENV=local-docker-build docker compose run --rm cypress   # contra el front compilado (15081)
+docker compose run --rm -e ELECTRON_ENABLE_LOGGING=1 cypress       # además, consola del navegador en la salida
 ```
+
+Diagnóstico de fallos: `support/e2e.ts` añade al mensaje de cada fallo el estado de la página
+(URL, `readyState`, recursos cargados, los más lentos y los últimos). No cambia el resultado: el
+error se relanza siempre. Ayuda a distinguir una página que no terminó de cargar de un fallo funcional.
 
 El contenedor se ejecuta y termina (`--rm`); no es un servicio permanente ni parte del
 despliegue de producción de Kali. La imagen no contiene credenciales ni resultados.
@@ -61,7 +70,8 @@ despliegue de producción de Kali. La imagen no contiene credenciales ni resulta
 ## Resultados
 
 `results/` (ignorado por git): `results/screenshots`, `results/videos`, `results/downloads` y
-los JSON que escriben algunas specs (p. ej. `results/GA10-observaciones.json`). En contenedor,
+los JSON que escriben algunas specs (p. ej. `results/GA10-observaciones.json`) y las duraciones
+de red que registran (`results/timings/`, p. ej. `CP-E2E-009.jsonl`). En contenedor,
 `results/` se monta en `/tests/results`.
 
 ## Estructura de carpetas
@@ -71,7 +81,7 @@ cypress/                      # herramienta Cypress (raíz de este README)
 ├── package.json, package-lock.json, tsconfig.json, cypress.config.ts
 ├── Dockerfile, .dockerignore, compose.yaml     # contenedor de tarea
 ├── cypress.env.example.json                    # plantilla de secretos locales (sin valores)
-├── config/environments/                        # local.json, local-docker.json, test.example.json
+├── config/environments/                        # local, local-docker, local-docker-build, test.example
 ├── e2e/
 │   ├── api/ (auth, invoice, security)          # pruebas black-box HTTP
 │   ├── ui/ (auth, invoice)                     # pruebas sobre React mediante navegador
