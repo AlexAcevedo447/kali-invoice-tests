@@ -104,6 +104,23 @@ groovy_run() {
   java -cp "$home/lib/*" groovy.ui.GroovyMain "$@"
 }
 
+# Foto de los datos de performance (solo lectura): facturas totales de la empresa perf y cuántos
+# clientes/productos de performance existen. La contraseña va a jq por entorno, nunca como argumento.
+perf_snapshot() { # <momento>
+  local auth="$(prop auth.protocol)://$(prop auth.host):$(prop auth.port)/api/v1"
+  local inv="$(prop invoice.protocol)://$(prop invoice.host):$(prop invoice.port)/api/v1"
+  local doc code token invoices customers products
+  doc="$(prop perf.customer.document)"; code="$(prop perf.product.code)"
+  token="$(PERF_EMAIL="$(prop perf.user.email)" jq -n '{email: env.PERF_EMAIL, password: env.KALI_PERF_USER_PASSWORD}' \
+    | curl -s -X POST "$auth/auth/login" -H 'Content-Type: application/json' --data @- | jq -r '.access_token // empty')"
+  [ -n "$token" ] || { echo "$1,$(date +%s%3N),,,"; return; }
+  invoices="$(curl -s -D - -o /dev/null "$inv/invoices?page=1&page_size=1" -H "Authorization: Bearer $token" \
+    | tr -d '\r' | awk -F': ' 'tolower($1)=="x-total-count"{print $2}')"
+  customers="$(curl -s "$inv/customers?search=$doc&page=1&page_size=10" -H "Authorization: Bearer $token" | jq --arg d "$doc" '[.[]? | select(.Document == $d)] | length')"
+  products="$(curl -s "$inv/products?search=$code&page=1&page_size=10" -H "Authorization: Bearer $token" | jq --arg c "$code" '[.[]? | select(.Code == $c)] | length')"
+  echo "$1,$(date +%s%3N),$invoices,$customers,$products"
+}
+
 run_concurrency() {
   local profile="$ROOT/config/profiles/concurrency.properties" run_id out steps rampup warmup hold n step_out failed=0
   pp() { grep -E "^$1=" "$profile" | tail -1 | cut -d= -f2- | tr -d '\r '; }
@@ -112,6 +129,9 @@ run_concurrency() {
   [[ "$run_id" =~ ^[A-Za-z0-9._-]+$ ]] || die "KALI_PERF_RUN_ID inválido: $run_id" 2
   out="$RESULTS_ROOT/$run_id"; mkdir -p "$out"
   echo "paso,usuarios,fase,inicio_epoch_ms,fin_epoch_ms" > "$out/windows.csv"
+  echo "momento,epoch_ms,facturas_empresa_perf,clientes_perf,productos_perf" > "$out/data.csv"
+  perf_snapshot "inicio" >> "$out/data.csv"
+  : > "$out/reconciliation.txt"
   for n in ${steps//,/ }; do
     step_out="$out/step-$(printf '%02d' "$n")u"; mkdir -p "$step_out"
     echo "== escalón $n usuario(s): subida ${rampup}s + estabilización ${warmup}s + medición ${hold}s" >&2
@@ -128,10 +148,22 @@ run_concurrency() {
     jq -r --arg n "$n" '.fases | to_entries[] | "\($n)u,\($n),\(.key),\(.value.ventana_epoch_ms[0]),\(.value.ventana_epoch_ms[1])"' \
       "$step_out/measurement.json" >> "$out/windows.csv"
     [ "$(jq '.fases.medicion.total.errores' "$step_out/measurement.json")" -eq 0 ] || failed=1
+    # Conciliación: facturas nuevas en el sistema == creaciones con 201 de este escalón (todas las fases).
+    perf_snapshot "despues-${n}u" >> "$out/data.csv"
+    local before after created
+    before="$(tail -2 "$out/data.csv" | head -1 | cut -d, -f3)"; after="$(tail -1 "$out/data.csv" | cut -d, -f3)"
+    created="$(jq '.todas_las_muestras["05 Crear factura"].exitosas // 0' "$step_out/measurement.json")"
+    if [ -n "$before" ] && [ -n "$after" ] && [ $((after - before)) -eq "$created" ]; then
+      echo "escalón ${n}u: facturas $before -> $after (+$((after - before))) = creaciones 201 del escalón ($created): conciliado" >> "$out/reconciliation.txt"
+    else
+      echo "escalón ${n}u: facturas ${before:-?} -> ${after:-?}; creaciones 201 del escalón: $created: NO CONCILIA" >> "$out/reconciliation.txt"; failed=1
+    fi
   done
   {
     echo "ambiente=$ENV_NAME tipo=$KIND perfil=concurrency escalones=$steps subida=${rampup}s estabilización=${warmup}s medición=${hold}s pausas=$(pp think.min.ms)-$(pp think.max.ms)ms"
     cat "$out"/step-*/summary.txt
+    echo "Datos de performance entre escalones (data.csv: facturas, clientes y productos perf):"
+    sed 's/^/  /' "$out/reconciliation.txt"
   } > "$out/summary.txt"
   check_no_secrets "$out"
   echo "Resultados: $out" >&2

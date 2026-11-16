@@ -87,6 +87,11 @@ phases.each { name, w ->
 }
 def after = samples.count { it.ts >= phases.medicion[1] }
 result.muestras_fuera_de_ventana = after
+// Todas las muestras del escalón (calentamiento + medición + posteriores a la ventana), para
+// conciliar con los datos que quedan en el sistema (p. ej. facturas creadas con 201).
+result.todas_las_muestras = samples.groupBy { it.label }.sort { it.key }.collectEntries { k, v ->
+    [k, [peticiones: v.size(), exitosas: v.count { it.ok }]]
+}
 
 new File(out).text = JsonOutput.prettyPrint(JsonOutput.toJson(result))
 

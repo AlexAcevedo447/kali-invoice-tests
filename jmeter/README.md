@@ -126,6 +126,14 @@ Concurrencia: `results/<fecha>-<ambiente>-concurrency/` con `step-01u/`, `step-0
 métricas y usuarios activos) y `summary.txt`. En la raíz quedan `windows.csv`, `summary.txt`,
 `resources.csv` y `resources-summary.txt`; estos dos últimos solo con `scripts/host/concurrency-local.sh`.
 
+Datos entre escalones: los escalones **no limpian** datos. Usuario, rol, cliente y producto de
+performance se reutilizan, y las facturas creadas se **acumulan** en la empresa `perf`.
+`data.csv` guarda una foto de solo lectura al inicio y tras cada escalón: facturas totales y
+clientes y productos de performance. `reconciliation.txt` comprueba que las facturas nuevas de
+cada escalón coinciden con sus creaciones con 201 en **todas** las fases: calentamiento, medición
+y lo posterior a la ventana. La tabla de medición cuenta solo la ventana medida, así que sus
+peticiones no equivalen a las facturas finales.
+
 ## Estructura
 
 ```
